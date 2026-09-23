@@ -451,6 +451,57 @@ pre-filled on a real phone — both need either a live Supabase
 connection or an actual WhatsApp client, neither of which this
 sandbox's network can reach (same limitation as every phase since 3).
 
+## Dashboard + analytics (Phase 9)
+
+`/dashboard` replaces the Phase 3-8 placeholder with real aggregates
+computed from the same data every other page already reads — nothing
+here is a separate/duplicated source of truth:
+
+- **`src/lib/domain/analytics.ts`** — `computeDashboardStats()` and
+  `computeMonthlyRevenue()`, pure functions over rows the page already
+  fetched (same pattern as the status engine and the WhatsApp domain
+  logic). Subscription status is always recomputed from `end_date` via
+  the Phase 7 status engine rather than trusted from the stored
+  `status` column, because that column is only written at creation/
+  renewal time and would otherwise silently go stale the moment a
+  subscription's paid period lapses without a renewal.
+- **KPI cards** — total customers, active subscriptions (active +
+  expiring-soon + expires-today), a "تحتاج متابعة" count that links
+  straight to `/dashboard/renewals`, VIP customer count, and this
+  month's revenue (sales + renewals whose own timestamp falls in the
+  current calendar month — not a running balance).
+- **Revenue chart** — a dependency-free bar chart
+  (`src/components/dashboard/RevenueChart.tsx`, plain divs, no charting
+  library) over the last 6 calendar months.
+- **Status breakdown** — a proportional bar per subscription status
+  (`src/components/dashboard/StatusBreakdown.tsx`).
+- **"يحتاج إجراء اليوم"** — the 5 soonest-expiring subscriptions needing
+  attention, each linking to that customer's profile.
+- **Recent activity** — the organization's last 8 `audit_logs` entries
+  (written by the Phase 7 RPCs), labeled in Arabic.
+
+**Verified — real, not assumed:** `computeDashboardStats` and
+`computeMonthlyRevenue` were compiled with `esbuild` and run under Node
+against fixed inputs spanning three different calendar months; the
+"this month" revenue total, the active/needs-action counts, and the
+6-month bucket placement all matched hand-calculated expected values
+exactly (confirmed a mid-month renewal landed in the correct bucket and
+an out-of-range one didn't leak into an adjacent month). Separately,
+the exact aggregate queries the dashboard page runs (`customers` count,
+`subscriptions` count, `audit_logs` count, all scoped by
+`organization_id`) were executed against the live database as an
+authenticated org member inside a rolled-back transaction, after
+calling `register_sale` to create one real subscription: all three
+counts correctly returned 1, then the transaction was rolled back and
+row counts confirmed back at 0 across `organizations`/`audit_logs`, so
+nothing was left in the production database. `next build`,
+`tsc --noEmit`, and `eslint` are all clean, and `/dashboard`
+307-redirects to `/login` when unauthenticated (confirmed with curl).
+**Not verified:** the rendered dashboard — charts, KPI cards, and the
+activity feed — in an actual signed-in browser session, since that
+needs a live Supabase connection this sandbox's network can't reach
+(same limitation as every phase since 3).
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -513,7 +564,15 @@ provisioned.
       verified: rendered UI in a real signed-in browser session, and
       whether a generated wa.me link actually opens WhatsApp on a real
       device — same sandbox network limitation as Phases 3-7.)
-- [ ] Phase 9 — Dashboard + analytics
+- [x] Phase 9 — Dashboard + analytics (real KPIs, dependency-free
+      revenue chart, status breakdown, "needs action today", and recent
+      activity, all computed from the same tables/RLS every other page
+      uses; analytics math unit-verified with real Node execution
+      against hand-calculated expected values; underlying aggregate
+      queries verified against the live database inside a rolled-back
+      transaction; build/tsc/eslint clean; route protection confirmed
+      by curl. Not verified: the rendered dashboard in a real signed-in
+      browser session — same sandbox network limitation as Phases 3-8.)
 - [ ] Phase 10 — Admin
 - [ ] Phase 11 — Security hardening
 - [ ] Phase 12 — Tests
