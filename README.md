@@ -101,6 +101,22 @@ fresh project:
   privilege-escalation fix above, the admin-role helper, the
   `activation_requests`/`notifications` tables, and the onboarding RPC.
 
+Later migrations are described in their own phase sections below; most
+recently, `20260923212959_phase13_fk_covering_indexes.sql` adds the 13
+foreign-key covering indexes the performance advisor flagged after
+deployment — applied to the live project and confirmed gone from a
+re-run of the advisor. Purely additive, no behavior change.
+
+The advisor also flags 13 "multiple permissive policies" (each
+`*_admin_all` policy overlapping a member-scoped policy on the same
+table/action) as a performance WARN — not a security issue, since
+Postgres ORs permissive policies together regardless. Left as-is rather
+than consolidated: doing that safely means splitting each `ALL` admin
+policy into per-command policies and merging conditions without
+changing effective access, which needs the same rolled-back-transaction
+verification this project uses for every other RLS change, and wasn't
+attempted this session as a purely-optional, non-blocking cleanup.
+
 **Verified:** applied both migrations to the live project via the
 Supabase migration tool; re-ran the security advisor after — the
 self-escalation path is closed. Two advisor items remain and are
