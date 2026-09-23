@@ -502,6 +502,90 @@ activity feed — in an actual signed-in browser session, since that
 needs a live Supabase connection this sandbox's network can't reach
 (same limitation as every phase since 3).
 
+## Admin panel (Phase 10)
+
+Every new organization is created via `create_organization` (Phase 2)
+in `pending_activation` status with a matching `pending`
+`activation_requests` row — the spec treats a brand-new merchant
+account as needing manual review before it's live, not as
+auto-activated. Phase 10 is the review side of that:
+
+- **Two RLS gaps closed.** `organizations`, `account_subscriptions`,
+  `activation_requests`, `notifications`, and `plans` already had
+  admin-wide `for all`/`select` policies from Phase 2, but `profiles`
+  and `organization_members` didn't — an admin trying to see "who owns
+  this pending org" would have silently gotten nothing back. Added
+  `profiles_admin_select` and `organization_members_admin_select`,
+  both read-only and gated by the same `private.is_platform_admin()`
+  check as everything else; neither touches the Phase 2 fix that locked
+  `profiles.platform_role` updates to `service_role` only, so an admin
+  still can't grant themselves or anyone else a role through this UI or
+  any client call.
+- **A real, separate bug fixed.** While testing the RPC below against
+  the live database, an `authenticated` call into `activation_requests`
+  failed with a flat "permission denied for table" error — not the
+  usual RLS-filtered-empty-result. It turned out Phase 2 wrote RLS
+  policies for `activation_requests` and `notifications` but never
+  issued the underlying table-level `GRANT` to `authenticated`, unlike
+  every other application table. A table-level grant is checked before
+  RLS is ever evaluated, so both tables' select/insert/update policies
+  have been silently unreachable since Phase 2 — this was found by
+  running a real query against the live database, not by reading the
+  code, and is now fixed with the missing grants.
+- **`admin_review_activation_request(request_id, decision, note)`** —
+  one RPC, one transaction, for approving or rejecting a pending
+  organization: updates `organizations.status`,
+  `account_subscriptions.status` (+ `started_at` on approval),
+  `activation_requests` itself (`status`, `note`, `reviewed_by`,
+  `reviewed_at`), and writes both an `audit_logs` entry and a
+  `notifications` row for the organization — all in one call, so a
+  failure partway through can't activate the subscription while leaving
+  the organization itself at `pending_activation`. It re-checks
+  `private.is_platform_admin()` itself (not just relying on the
+  page-level guard) and locks the request row (`FOR UPDATE`) so the
+  same request can't be approved twice, whether from a double-click or
+  two admins reviewing at once.
+- **`/admin`** (platform overview: organization counts by status, total
+  users, pending-review count, recent activity across every
+  organization), **`/admin/activations`** (pending requests with
+  approve/reject actions, plus a resolved history), and
+  **`/admin/organizations`** (every organization with its owner, member
+  count, and status) — all gated by `src/lib/admin/requireAdmin.ts`,
+  which is a UX convenience, not the real security boundary: the actual
+  boundary is `private.is_platform_admin()` inside every RLS policy and
+  inside the RPC itself, so even a bypassed page guard couldn't read
+  another org's data or approve a request. A "🛡️ لوحة الإدارة" link
+  appears in the merchant dashboard's own nav only for a signed-in
+  admin.
+
+**Verified — real, not assumed:** the missing-grant bug above was
+caught by actually executing an authenticated query against the live
+database, not by code review. After fixing it, the full approve/reject
+flow was exercised end-to-end against the live database inside a
+rolled-back transaction: creating a temporary admin profile and two
+pending organizations, approving one and rejecting the other, and
+confirming `organizations.status`, `account_subscriptions.status`,
+and `activation_requests.status`/`reviewed_by` all landed correctly for
+each; confirming exactly 2 `audit_logs` rows and (checked from the
+table owner's view, since the querying admin isn't an org member and is
+correctly RLS-restricted from seeing an org's own notifications) that
+the `notifications` rows were genuinely inserted, not silently
+dropped; confirming an admin can read another user's `profiles` row and
+another org's `organization_members` rows via the two new policies;
+and confirming a second approval attempt on an already-reviewed request
+is rejected by the RPC's own status check. Everything was rolled back
+afterward with row counts confirmed back at 0. The security advisor was
+re-run: no new issues beyond the same class of expected `SECURITY
+DEFINER` warning already present for the Phase 2/7 RPCs. `next build`,
+`tsc --noEmit`, and `eslint` are all clean, and `/admin`,
+`/admin/activations`, and `/admin/organizations` all correctly
+307-redirect to `/login` when unauthenticated (confirmed with curl).
+**Not verified:** the signed-in-but-non-admin redirect to `/dashboard`
+(the logic is a straightforward, reviewed profile-role check, but
+exercising it needs a real signed-in session this sandbox's network
+can't reach) and the rendered admin UI in an actual browser — same
+limitation as every phase since 3.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -573,7 +657,17 @@ provisioned.
       transaction; build/tsc/eslint clean; route protection confirmed
       by curl. Not verified: the rendered dashboard in a real signed-in
       browser session — same sandbox network limitation as Phases 3-8.)
-- [ ] Phase 10 — Admin
+- [x] Phase 10 — Admin (activation-request review RPC with audit log +
+      notification, atomic and idempotent against double-approval;
+      fixed two real RLS gaps — missing admin-select policies on
+      profiles/organization_members, and missing table-level GRANTs on
+      activation_requests/notifications that had silently made their
+      Phase 2 policies unreachable since they were written; full
+      approve/reject flow verified against the live database inside a
+      rolled-back transaction; build/tsc/eslint clean; route protection
+      confirmed by curl. Not verified: the signed-in-non-admin redirect
+      and the rendered admin UI in a real browser session — same
+      sandbox network limitation as Phases 3-9.)
 - [ ] Phase 11 — Security hardening
 - [ ] Phase 12 — Tests
 - [ ] Phase 13 — GitHub/Vercel production deployment

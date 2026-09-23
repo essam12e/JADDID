@@ -13,7 +13,13 @@ const LINKS = [
   { href: "/dashboard/templates", label: "القوالب", icon: "💬" },
 ];
 
-export default function DashboardNav({ userEmail }: { userEmail: string }) {
+export default function DashboardNav({
+  userEmail,
+  isAdmin,
+}: {
+  userEmail: string;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -60,6 +66,15 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
               {link.icon} {link.label}
             </Link>
           ))}
+          {isAdmin ? (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-purple-700"
+            >
+              🛡️ لوحة الإدارة
+            </Link>
+          ) : null}
           <form action="/auth/signout" method="post" className="mt-2">
             <button className="w-full rounded-lg px-3 py-2.5 text-right text-sm font-semibold text-slate-500">
               تسجيل الخروج
@@ -95,6 +110,14 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
               {link.icon} {link.label}
             </Link>
           ))}
+          {isAdmin ? (
+            <Link
+              href="/admin"
+              className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-purple-700 transition-colors hover:bg-purple-50"
+            >
+              🛡️ لوحة الإدارة
+            </Link>
+          ) : null}
         </nav>
 
         <div className="border-t border-[var(--jaddid-border)] p-3">
