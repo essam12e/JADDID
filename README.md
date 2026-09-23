@@ -586,6 +586,122 @@ exercising it needs a real signed-in session this sandbox's network
 can't reach) and the rendered admin UI in an actual browser — same
 limitation as every phase since 3.
 
+## Security hardening (Phase 11)
+
+This phase was a dedicated audit pass rather than new features: a full
+sweep of table grants, function search paths, response headers,
+dependency vulnerabilities, and abuse surface on top of everything
+built in Phases 1-10.
+
+**A real, exploitable gap found and fixed.** `customers`, `subscriptions`,
+and `renewals` had a blanket `INSERT`/`UPDATE`/`DELETE` grant to
+`authenticated` left over from the baseline schema, even though every
+legitimate write to these three tables goes exclusively through the
+atomic RPCs (`register_sale`, `renew_subscription`), which are owned by
+`postgres` and are unaffected by revoking `authenticated`'s grants
+(confirmed by grepping the whole app: nothing calls
+`.from("customers"/"subscriptions"/"renewals").insert/update/delete()`
+directly). Left in place, RLS only restricts which *rows* an org member
+can touch, not which *columns* — the same class of gap the Phase 2
+migration fixed for `profiles.platform_role`. Concretely, any
+authenticated org member (or a compromised/lower-privilege "staff"
+session) could previously, with nothing more than the browser's own
+Supabase client: set `customers.lifetime_value`/`renewal_count` to
+anything, forging VIP status and the dashboard's revenue numbers;
+set `subscriptions.end_date`/`status`/`price_paid` directly, granting a
+free extended subscription with no renewal row, no idempotency key, and
+no audit log entry — completely bypassing the renewal trail the app is
+built around; or insert a fabricated `renewals` row with no matching
+subscription update, corrupting the ledger. All three tables are now
+locked to `SELECT`-only for `authenticated`, which changes zero
+application behavior (nothing legitimate used the write grants) while
+closing the gap entirely.
+
+**Two related tightenings from the same audit:** `products` had a
+blanket `UPDATE` grant, but the only code path that writes to it
+directly (`/api/import`, running as the calling user's own session, not
+a service-role bypass) only ever sets
+`name`/`description`/`image_url`/`price`/`is_available` — so `UPDATE`
+was narrowed to exactly the columns the app uses, closing off a crafted
+request that could otherwise reassign a product's `organization_id`/
+`store_id` to a different tenant/store or forge `source_fingerprint` to
+defeat re-import de-duplication. `notifications` lost its `INSERT`
+grant entirely (nothing legitimate creates one client-side) and its
+`UPDATE` grant was narrowed to `is_read` only (so marking a
+notification read can't be used to rewrite its title/body and spoof a
+different message). `activation_requests` lost its `INSERT`/`UPDATE`
+grants to `authenticated` too — redundant cleanup, since no RLS policy
+ever let an org member write there directly, but it keeps the
+table-level grants honest about what's actually reachable.
+
+**Other hardening in this phase:**
+- **Security response headers** (`next.config.ts`): a Content-Security-Policy
+  (scoped to `'self'` plus the exact Supabase project origin for
+  `connect-src`, `frame-ancestors 'none'`, no external script/style
+  hosts), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive
+  `Permissions-Policy`, and HSTS — applied to every route via
+  `headers()` so a new route can't ship without them by accident.
+- **Rate limiting on `/api/import`**: this endpoint fetches an
+  external, merchant-supplied URL and writes to the database on every
+  call, so it's both an abuse vector (using this server to repeatedly
+  hit arbitrary external hosts) and a cost concern. With no separate
+  infrastructure available (no Redis), it's enforced against the
+  `import_jobs` table that already logs every attempt — capped at 3
+  attempts per store per 5-minute window, returning `429` beyond that.
+- **A full table-grant audit** across every table in `public` (not just
+  the ones touched this phase) confirmed no other table has the same
+  missing-grant or over-broad-grant pattern.
+- **A function `search_path` audit** confirmed every `SECURITY DEFINER`
+  function in `public` and `private` — including the ones from every
+  prior phase — has `search_path = ''` set, so none of them are
+  vulnerable to a schema-shadowing attack.
+- **`npm audit`**: 0 vulnerabilities across all 466 dependencies
+  (prod + dev + optional + peer).
+- **Secrets hygiene**: confirmed `.env*` is git-ignored and no
+  `.env`/`.env.local` file has ever been committed to this repository's
+  history.
+
+**Known limitation, not fixed here:** Supabase Auth's "leaked password
+protection" (checks new passwords against HaveIBeenPwned) has shown as
+disabled in the security advisor since Phase 2. It's an auth-provider
+setting, not something reachable through SQL migrations or any tool
+available in this session — turning it on requires a person with
+dashboard access to toggle it under Authentication → Policies.
+
+**Verified — real, not assumed:** the vulnerability itself was
+confirmed by directly querying `information_schema.role_table_grants`/
+`column_privileges` against the live database and seeing
+`lifetime_value`, `renewal_count`, `end_date`, `status`, and
+`price_paid` all listed as `UPDATE`-able by `authenticated` — not
+inferred from reading the schema file. After applying the migration,
+the fix was verified inside a rolled-back transaction: a direct
+`UPDATE customers SET lifetime_value = 999999` and a direct
+`UPDATE subscriptions SET end_date = '2099-01-01'` were confirmed to
+now fail with `insufficient_privilege`, while
+`register_sale` and a legitimate `products` name/price edit both still
+worked correctly, and reassigning a product's `store_id` was
+independently confirmed blocked. Row counts were back at 0 across
+`organizations`/`customers`/`products` afterward. The rate-limit
+counting query was verified against real `import_jobs` rows. The
+security headers were verified three ways: `curl -I` against a local
+production server showing every header present on a static page, a
+dynamic page, and a `/login` redirect; loading the homepage,
+`/login`, and `/signup` in a real headless Chromium via Playwright with
+console/page-error listeners attached and confirming zero CSP
+violations or script errors; and confirming the CSP's `connect-src`
+correctly resolved to the real Supabase project origin at build time.
+`next build`, `tsc --noEmit`, and `eslint` are all clean. The security
+advisor was re-run after the migration: no new issues beyond the same
+expected `SECURITY DEFINER` warning class, plus the still-open (and now
+documented) leaked-password-protection setting. **Not verified:** an
+actual attempted exploit from a real second browser session with a
+genuinely lower-privileged ("staff") role signed in — the fix was
+proven against the same RLS/grant mechanism the browser client uses,
+not against a live non-owner session, since that needs a live Supabase
+connection this sandbox's network can't reach (same limitation as
+every phase since 3).
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -668,7 +784,20 @@ provisioned.
       confirmed by curl. Not verified: the signed-in-non-admin redirect
       and the rendered admin UI in a real browser session — same
       sandbox network limitation as Phases 3-9.)
-- [ ] Phase 11 — Security hardening
+- [x] Phase 11 — Security hardening (found and fixed a real
+      column-tampering gap — customers/subscriptions/renewals had a
+      blanket write grant to authenticated despite all legitimate
+      writes going through atomic RPCs, confirmed exploitable via
+      information_schema before the fix and blocked afterward;
+      narrowed products/notifications/activation_requests grants;
+      added CSP + security headers verified via curl and a real
+      headless-Chromium console check; added import-endpoint rate
+      limiting; npm audit clean; full search_path and table-grant audit
+      across every table/function. Leaked-password-protection remains
+      an open, documented manual dashboard action — no tool available
+      to set it. Not verified: an actual exploit attempt from a real
+      lower-privileged signed-in session — same sandbox network
+      limitation as Phases 3-10.)
 - [ ] Phase 12 — Tests
 - [ ] Phase 13 — GitHub/Vercel production deployment
 - [ ] Phase 14 — Final production verification

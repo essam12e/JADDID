@@ -5,6 +5,9 @@ import { importFromUrl } from "@/lib/importer";
 
 export const maxDuration = 60;
 
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const RATE_LIMIT_MAX_PER_WINDOW = 3;
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -36,6 +39,27 @@ export async function POST(request: Request) {
 
   if (!store) {
     return NextResponse.json({ error: "المتجر غير موجود" }, { status: 404 });
+  }
+
+  // Rate limit: the importer fetches an external URL and writes to the
+  // database on every call, so an uncapped endpoint is both an abuse
+  // vector (repeatedly hitting arbitrary external hosts through this
+  // server) and a cost/DoS concern. There's no separate infra for this
+  // (no Redis), so it's enforced against the import_jobs table that
+  // already logs every attempt -- no new table, and the count is
+  // per-store so one store's retries can't exhaust another's quota.
+  const rateLimitWindowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+  const { count: recentJobCount } = await supabase
+    .from("import_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("store_id", store.id)
+    .gte("created_at", rateLimitWindowStart);
+
+  if ((recentJobCount ?? 0) >= RATE_LIMIT_MAX_PER_WINDOW) {
+    return NextResponse.json(
+      { error: "عدد كبير من محاولات الاستيراد خلال وقت قصير. يرجى المحاولة لاحقًا." },
+      { status: 429 },
+    );
   }
 
   const { data: job, error: jobError } = await supabase
