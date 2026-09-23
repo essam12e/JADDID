@@ -23,7 +23,8 @@ const ROW_A: Service[] = [
   svc("netflix"),
   svc("githubcopilot", "GitHub Copilot"),
   svc("zoom", "Zoom Pro"),
-  svc("spotify"),
+  svc("spotify", "Spotify Premium"),
+  svc("applemusic", "Apple Music"),
 ];
 
 const ROW_B: Service[] = [
@@ -35,6 +36,7 @@ const ROW_B: Service[] = [
   svc("vercel"),
   svc("airtable"),
   svc("soundcloud"),
+  svc("pubg", "PUBG Mobile"),
 ];
 
 function Chip({ service }: { service: Service }) {
@@ -107,6 +109,7 @@ function Row({
 
   return (
     <div
+      dir="ltr"
       className="overflow-hidden"
       style={{
         maskImage:
