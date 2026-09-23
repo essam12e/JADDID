@@ -6,7 +6,7 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
     title: "المنتج",
     links: [
       { href: "/#features", label: "المميزات" },
-      { href: "/#pricing", label: "الأسعار" },
+      { href: "/pricing", label: "الأسعار" },
       { href: "/#faq", label: "الأسئلة الشائعة" },
     ],
   },

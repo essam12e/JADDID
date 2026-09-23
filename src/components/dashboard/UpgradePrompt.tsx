@@ -57,10 +57,10 @@ export default function UpgradePrompt({
         </div>
       </div>
       {/* No billing/upgrade page exists yet, so this points at the real,
-          working pricing section rather than a route that doesn't exist.
+          working pricing page rather than a route that doesn't exist.
           Repoint to a dedicated billing flow once one is built. */}
       <Link
-        href="/#pricing"
+        href="/pricing"
         className="shrink-0 rounded-xl bg-amber-600 px-5 py-2.5 text-center text-sm font-bold text-white transition-colors hover:bg-amber-700 sm:self-center"
       >
         ترقية الباقة

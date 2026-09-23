@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -24,14 +25,24 @@ export default async function AdminOrganizationsPage() {
       .from("organizations")
       .select("id, name, account_number, status, created_at")
       .order("created_at", { ascending: false }),
-    supabase.from("organization_members").select("organization_id, role, profiles(full_name)"),
+    supabase.from("organization_members").select("organization_id, role, user_id"),
   ]);
+
+  // organization_members.user_id references auth.users, not profiles --
+  // there's no FK PostgREST can embed `profiles` through here, so this
+  // used to silently resolve every owner's name to "بدون اسم". Resolve
+  // with a separate lookup instead.
+  const userIds = Array.from(new Set((members ?? []).map((m) => m.user_id)));
+  const { data: memberProfiles } =
+    userIds.length > 0
+      ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
+      : { data: [] as { id: string; full_name: string }[] };
+  const nameById = new Map((memberProfiles ?? []).map((p) => [p.id, p.full_name]));
 
   const membersByOrg = new Map<string, { role: string; full_name: string }[]>();
   for (const m of members ?? []) {
-    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
     const list = membersByOrg.get(m.organization_id) ?? [];
-    list.push({ role: m.role, full_name: profile?.full_name || "بدون اسم" });
+    list.push({ role: m.role, full_name: nameById.get(m.user_id) || "بدون اسم" });
     membersByOrg.set(m.organization_id, list);
   }
 
@@ -61,7 +72,14 @@ export default async function AdminOrganizationsPage() {
                 const owner = orgMembers.find((m) => m.role === "owner");
                 return (
                   <tr key={org.id}>
-                    <td className="px-4 py-3 font-semibold text-[var(--jaddid-navy)]">{org.name}</td>
+                    <td className="px-4 py-3 font-semibold text-[var(--jaddid-navy)]">
+                      <Link
+                        href={`/admin/organizations/${org.id}`}
+                        className="hover:text-[var(--jaddid-blue)] hover:underline"
+                      >
+                        {org.name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-slate-500" dir="ltr">
                       {org.account_number}
                     </td>

@@ -28,7 +28,15 @@ const FEATURE_LABELS: Record<string, string> = {
  * active plans) rather than hard-coding the price here and risking it
  * drift from what admins configure in the database.
  */
-export default async function Pricing() {
+export default async function Pricing({
+  standalone = false,
+}: {
+  /** True when rendered on its own page rather than after the dark
+   * DashboardPreview section on the landing page — skips the "resting on
+   * top of a dark section" edge treatment, which needs that dark section
+   * above it to make visual sense. */
+  standalone?: boolean;
+} = {}) {
   const supabase = await createClient();
   // A hard timeout on this query: without it, a slow or unreachable
   // database would block the entire homepage's server render indefinitely
@@ -51,7 +59,12 @@ export default async function Pricing() {
   const list = (plans ?? []) as Plan[];
 
   return (
-    <section id="pricing" className="section-edge-top relative bg-white px-6 pb-20 pt-16 sm:pt-20">
+    <section
+      id="pricing"
+      className={`relative bg-white px-6 pb-20 pt-16 sm:pt-20 ${
+        standalone ? "" : "section-edge-top"
+      }`}
+    >
       <div className="mx-auto max-w-6xl">
       <Reveal>
         <SectionHeading eyebrow="الأسعار" title="باقة واحدة بسيطة، بدون تعقيد" />
