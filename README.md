@@ -702,10 +702,65 @@ not against a live non-owner session, since that needs a live Supabase
 connection this sandbox's network can't reach (same limitation as
 every phase since 3).
 
-## Testing
+## Testing (Phase 12)
 
-Not yet added (planned: Phase 12 — unit tests for domain logic, integration
-tests for critical flows, E2E for the main journeys).
+Real, automated unit tests run with [Vitest](https://vitest.dev) (`npm test`
+/ `npx vitest run`), 132 tests across 13 files, all passing. `npx tsc --noEmit`,
+`npx eslint .`, and `npm run build` were all re-run after adding the tests
+and confirmed clean.
+
+**What's covered:**
+
+- **Pure domain logic** (`src/lib/domain/`): the subscription status engine
+  (`subscriptionStatus.test.ts` — every boundary of the active /
+  expiring_soon / expires_today / at_risk / expired transitions, including
+  the exact 7-day and 3-day threshold edges, Date-vs-ISO-string input, and
+  time-of-day insensitivity), the dashboard/analytics aggregation
+  (`analytics.test.ts`), and the WhatsApp template renderer, phone
+  normalizer, and `wa.me` link builder (`whatsapp.test.ts`).
+- **The SSRF guard** (`src/lib/importer/ssrf.test.ts`): blocked literal
+  hostnames/IPs, private IPv4 ranges, IPv6 loopback, and the DNS-rebinding
+  defense (`node:dns` mocked so a hostname that resolves to a private
+  address is rejected without needing real network access). Writing these
+  tests surfaced a real bug, fixed in this phase: Node's `URL` parser
+  normalizes an IPv4-mapped IPv6 literal like `[::ffff:127.0.0.1]` into hex
+  form (`[::ffff:7f00:1]`), and the original `isBlockedIpv6` only matched
+  the dotted-quad string form, so the hex form silently bypassed the
+  mapped-IPv4 check entirely. `isBlockedIpv6` was rewritten to expand any
+  IPv6 literal to its 8 hex groups (handling `::` compression and either
+  IPv4-tail notation) before checking for the `::ffff:0:0/96` mapped range,
+  and both forms — plus the mapped cloud-metadata address — now have
+  regression tests.
+- **The importer adapters** (`src/lib/importer/adapters/*.test.ts`): the
+  Shopify `/products.json` adapter and the schema.org JSON-LD adapter, each
+  tested against fixture payloads with `safeFetch` mocked out (no real
+  network calls), covering successful extraction (name/price/image/
+  availability/fingerprint mapping, HTML-stripping, `@graph`-wrapped
+  nodes), and the failure paths (non-2xx status, invalid JSON, empty/
+  missing product data, a malformed JSON-LD script tag that must not fail
+  the whole page, an oversized page, and `safeFetch` throwing).
+- **Zod validation schemas** (`src/lib/validations/*.test.ts`): every schema
+  used by a form in the app (auth, onboarding, product, sale, renewal,
+  template, import), focused on the custom `.refine()` rules — password
+  strength, phone-number format, numeric-string coercion and
+  positive-number checks, URL format, password-confirmation matching.
+
+**What's explicitly not covered by `npm test`, and why:**
+
+- Integration tests against the live Supabase RPCs/RLS policies/grants —
+  these were already verified for real, through Phases 7–11, using
+  rolled-back SQL transactions (`begin; ...; rollback;`) run directly
+  against the live database via the Supabase MCP tool. That method proves
+  the actual server-side behavior (RLS, grants, `SECURITY DEFINER`
+  functions) in a way a mocked unit test cannot, but it isn't something
+  `npm test` replays — there's no local Postgres instance with the schema
+  and policies loaded for Vitest to run against in this sandbox.
+- Browser/E2E tests against a real signed-in session — blocked by the same
+  sandbox network limitation noted since Phase 3 (this environment's
+  direct network cannot reach `*.supabase.co`). Phase 11's Playwright pass
+  (loading `/`, `/login`, `/signup` in real headless Chromium and checking
+  console/CSP output) is the closest real-browser verification performed
+  so far, but it did not exercise a signed-in flow.
 
 ## Deployment
 
@@ -798,6 +853,10 @@ provisioned.
       to set it. Not verified: an actual exploit attempt from a real
       lower-privileged signed-in session — same sandbox network
       limitation as Phases 3-10.)
-- [ ] Phase 12 — Tests
+- [x] Phase 12 — Tests (Vitest, 132 tests / 13 files, all passing;
+      domain logic, SSRF guard with DNS mocked, importer adapters via
+      fixtures, validation schemas; found and fixed a real IPv4-mapped-
+      IPv6 SSRF bypass in the hex-form literal while writing the SSRF
+      tests; `tsc`/`eslint`/`next build` re-verified clean)
 - [ ] Phase 13 — GitHub/Vercel production deployment
 - [ ] Phase 14 — Final production verification

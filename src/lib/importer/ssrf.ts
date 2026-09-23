@@ -68,16 +68,59 @@ function isBlockedIpv4(ip: string): boolean {
   return BLOCKED_IPV4_RANGES.some((range) => inCidr(ip, range));
 }
 
+/**
+ * Expands a (possibly "::"-compressed, possibly IPv4-tailed) IPv6 address
+ * into its 8 hex groups. Node's URL parser normalizes an IPv4-mapped
+ * literal like "::ffff:127.0.0.1" into hex form ("::ffff:7f00:1") --
+ * without this, a naive string check for the dotted-quad tail silently
+ * stops matching and the mapped-IPv4 defense below is bypassed entirely.
+ */
+function expandIpv6Groups(ip: string): string[] | null {
+  // Normalize an embedded IPv4 tail (e.g. "::ffff:127.0.0.1") into two
+  // hex groups first, so the rest of the parser only ever deals with
+  // plain hex-group IPv6 syntax.
+  const ipv4TailMatch = ip.match(/^(.*:)((?:\d{1,3}\.){3}\d{1,3})$/);
+  let working = ip;
+  if (ipv4TailMatch) {
+    const long = ipv4ToLong(ipv4TailMatch[2]);
+    if (long === null) return null;
+    const high = ((long >>> 16) & 0xffff).toString(16);
+    const low = (long & 0xffff).toString(16);
+    working = `${ipv4TailMatch[1]}${high}:${low}`;
+  }
+
+  const halves = working.split("::");
+  if (halves.length > 2) return null; // "::" may appear at most once
+
+  const head = halves[0] ? halves[0].split(":").filter((s) => s !== "") : [];
+  if (halves.length === 1) {
+    return head.length === 8 ? head : null;
+  }
+
+  const tail = halves[1] ? halves[1].split(":").filter((s) => s !== "") : [];
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0) return null;
+  return [...head, ...Array(missing).fill("0"), ...tail];
+}
+
 function isBlockedIpv6(ip: string): boolean {
   const normalized = ip.toLowerCase();
   if (normalized === "::1") return true; // loopback
   if (normalized === "::") return true; // unspecified
   if (normalized.startsWith("fe80:")) return true; // link-local
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local (fc00::/7)
-  if (normalized.startsWith("::ffff:")) {
-    // IPv4-mapped IPv6 address -- unwrap and check as IPv4.
-    const mapped = normalized.replace("::ffff:", "");
-    return net.isIP(mapped) === 4 ? isBlockedIpv4(mapped) : false;
+
+  const groups = expandIpv6Groups(normalized);
+  if (groups) {
+    // IPv4-mapped IPv6 (::ffff:0:0/96): first 5 groups zero, 6th is ffff,
+    // last two groups are the mapped IPv4 address's two 16-bit halves.
+    const isV4Mapped = groups.slice(0, 5).every((g) => g === "0") && groups[5] === "ffff";
+    if (isV4Mapped) {
+      const high = parseInt(groups[6], 16);
+      const low = parseInt(groups[7], 16);
+      const mapped = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+      return isBlockedIpv4(mapped);
+    }
   }
   return false;
 }
