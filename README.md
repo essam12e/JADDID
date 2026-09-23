@@ -174,6 +174,49 @@ works here, which doesn't exercise the Auth/GoTrue HTTP API). This needs
 to be tested either after deployment to Vercel or by running the app
 locally on a normal network.
 
+## Landing page + onboarding
+
+The full marketing page (`/`) is built: hero with the store-URL prompt,
+how-it-works, product import / customers / subscriptions / WhatsApp
+templates / renewal-opportunities feature sections, a dashboard preview
+(explicitly labeled as illustrative numbers, not live data), pricing
+(read from the `plans` table, not hard-coded), FAQ, CTA, and footer. GSAP
+scroll-reveal is used sparingly and only when
+`prefers-reduced-motion` is not set; it degrades to a plain static render
+otherwise.
+
+Onboarding (`/onboarding`) is a 6-step wizard (welcome → store name →
+store URL → import → review → dashboard) that persists progress on the
+new `stores.onboarding_step` column, so leaving and returning resumes at
+the right step instead of restarting. Store creation goes through the
+`create_organization` RPC added in Phase 2 — no direct table inserts from
+the client. The "import products" step does **not** pretend the importer
+works: it explicitly says that feature is still being built (Phase 5)
+and lets the user continue and add products manually later, per the
+project's rule against faking a working integration.
+
+**A real gap found and fixed while testing this phase:** the `plans`
+table had RLS correctly restricting rows to `is_active = true`, but no
+table-level `SELECT` grant to the `anon` Postgres role at all — meaning
+the public pricing section (which unauthenticated visitors must be able
+to see) could never actually read it, regardless of the RLS policy. Fixed
+with `grant select on table public.plans to anon;` (migration
+`grant_anon_select_plans`, applied to the live project).
+
+**Confirmed in this environment:** this sandbox's network egress blocks
+outbound HTTPS to `*.supabase.co` entirely (same restriction hit in
+Phase 3) — a local production server here can build and serve every
+page, but any page or action that actually queries Supabase from server
+or browser code (the pricing section's DB read, the onboarding wizard's
+RPC/update calls) fails at request time with "Host not in allowlist,"
+not with an application bug. That failure was how the `anon` grant gap
+above was actually caught — the pricing section correctly showed its
+honest fallback message instead of fake data. The onboarding wizard's
+Supabase calls are implemented the same way as the now-working Phase 2/3
+code but have not been exercised end-to-end here for the same network
+reason; this needs verification after deployment to Vercel (which has
+normal internet access) or on a machine with an unrestricted network.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -208,7 +251,10 @@ provisioned.
 - [x] Phase 3 — Auth, verification, password recovery (code complete,
       build/lint verified; live network calls to Supabase Auth not yet
       exercised in this environment — see Authentication below)
-- [ ] Phase 4 — Landing (full) + onboarding flow
+- [x] Phase 4 — Landing (full) + onboarding flow (code complete,
+      build/lint verified; live Supabase reads on the landing page and
+      the onboarding wizard's writes are not yet exercised end-to-end in
+      this environment — see below)
 - [ ] Phase 5 — Store import architecture
 - [ ] Phase 6 — Products
 - [ ] Phase 7 — Customers + subscriptions
