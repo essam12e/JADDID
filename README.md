@@ -57,9 +57,64 @@ See `.env.example`. Required for any real functionality:
 
 ## Supabase setup
 
-Not yet provisioned for this project (see "Remaining / blockers" below).
-When set up, migrations will live in `supabase/migrations/` and must be
-re-runnable — no undocumented manual dashboard edits.
+Provisioned as its own isolated project (`JADDID`, id `lyxgbeqxsmojshcljubk`,
+under the same Supabase organization as other unrelated projects — not
+sharing tables, keys, or data with them).
+
+Schema: `profiles`, `organizations`, `organization_members`, `plans`,
+`account_subscriptions`, `stores`, `products`, `customers`,
+`subscriptions`, `renewals`, `message_templates`, `import_jobs`,
+`audit_logs`, `activation_requests`, `notifications`. Multi-tenant model:
+`auth.users → profiles`, `organizations → organization_members` (roles:
+owner/admin/staff/viewer), then stores/products/customers/subscriptions/
+renewals all scoped by `organization_id`.
+
+RLS is enabled on every table. Tenant isolation policies all route through
+a single `private.is_org_member(org_id)` helper. Admin-wide read/write
+(for the admin dashboard) routes through `private.is_platform_admin()`,
+which reads `profiles.platform_role` — a column now locked down (see
+below) so it cannot be self-escalated from the client.
+
+A real privilege-escalation bug was found and fixed while auditing the
+pre-existing schema: the `profiles_self_update` RLS policy allowed a user
+to update their own row, and Postgres RLS does not restrict *which*
+columns an UPDATE touches — so any signed-in user could have set their
+own `platform_role` to `admin` directly via the REST API. Fixed by
+revoking table-level UPDATE from `authenticated` and re-granting it only
+on `full_name`/`updated_at`, plus a defensive trigger that rejects any
+`platform_role` change not made by the service role.
+
+Organization creation (onboarding) goes through a single `SECURITY
+DEFINER` RPC, `create_organization()`, rather than direct table INSERTs —
+there is deliberately no INSERT policy on `organizations` or
+`organization_members`, so the only way to create one is through that
+function, which always makes the caller the owner of a brand-new org.
+
+Migrations live in `supabase/migrations/` and are re-runnable against a
+fresh project:
+- `20260922210826_baseline_schema.sql` — reconstruction of the schema as
+  it already existed on the live project before this repo tracked
+  migrations (it had been created directly against the project outside
+  of version control — documented here rather than left as an
+  undocumented manual change).
+- `20260922233113_phase2_hardening_and_completion.sql` — the
+  privilege-escalation fix above, the admin-role helper, the
+  `activation_requests`/`notifications` tables, and the onboarding RPC.
+
+**Verified:** applied both migrations to the live project via the
+Supabase migration tool; re-ran the security advisor after — the
+self-escalation path is closed. Two advisor items remain and are
+tracked, not hidden: `create_organization` is (intentionally)
+callable by signed-in users — that is its purpose, since it is the only
+onboarding path and is scoped to creating a brand-new org for the caller
+only; and "leaked password protection" is off in Auth settings — that is
+a dashboard toggle with no exposed management-API tool in this session,
+so it is not yet enabled (see "Remaining / blockers").
+
+**Not yet verified:** actual cross-tenant isolation with two real user
+accounts (User A cannot read/write User B's data) — this needs Phase 3
+(auth) to exist first, and is planned as a mandatory test before Phase 14
+sign-off, per the project's own testing requirements.
 
 ## Resend setup
 
@@ -97,8 +152,9 @@ provisioned.
 
 ## Project status (updated as phases complete)
 
-- [x] Phase 1 — Repository, architecture, dependencies (this commit)
-- [ ] Phase 2 — Supabase schema, migrations, RLS
+- [x] Phase 1 — Repository, architecture, dependencies
+- [x] Phase 2 — Supabase schema, migrations, RLS (cross-tenant isolation
+      test with real accounts still pending — see Supabase setup above)
 - [ ] Phase 3 — Auth, verification, password recovery
 - [ ] Phase 4 — Landing (full) + onboarding flow
 - [ ] Phase 5 — Store import architecture
