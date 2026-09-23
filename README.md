@@ -313,6 +313,79 @@ needs a live Supabase connection this sandbox's network can't reach
 image-fallback behavior are correct by code review and consistent with
 the schema, not confirmed by looking at a real logged-in screenshot yet.
 
+## Customers + subscriptions (Phase 7)
+
+Two atomic, `SECURITY DEFINER` Postgres RPCs replace the honest stub
+pages from Phase 6:
+
+- **`register_sale(...)`** — finds an existing customer by
+  `(store_id, phone)` or creates one, creates the subscription with an
+  `end_date` computed from `start_date + duration`, adds the payment to
+  the customer's `lifetime_value`, and writes an audit log entry. All in
+  one transaction, so a failure partway through leaves nothing behind.
+- **`renew_subscription(...)`** — takes a client-generated idempotency
+  key; if a renewal with that key already exists it returns the same
+  renewal id instead of creating a duplicate (protects against a
+  double-click or a retried network request). It locks the subscription
+  row (`SELECT ... FOR UPDATE`) before reading its `end_date`, so two
+  concurrent renewals on the same subscription can't race. The new
+  `end_date` extends from `greatest(previous_end_date, today)`, so a
+  still-active subscription keeps its remaining paid time and an
+  already-expired one starts the new period from today rather than
+  silently backdating it.
+
+Both follow the exact pattern established for `create_organization` in
+Phase 2: `set search_path = ''`, every table reference schema-qualified,
+`revoke all from public` + `grant execute to authenticated` only.
+
+`src/lib/domain/subscriptionStatus.ts` is the Customer Status Engine
+from the spec (sections 25-26) as pure, unit-testable functions with
+configurable thresholds — no DB or `Date.now()` baked in unless the
+caller omits `now`:
+
+- **Subscription Status** (`active` / `expiring_soon` / `expires_today`
+  / `expired` / `at_risk`) is derived from `end_date` alone, with a
+  7-day "expiring soon" window and a 3-day "at risk" grace period after
+  expiry before it's counted as fully `expired`.
+- **Customer Value Status** (`normal` / `vip`) is derived from
+  `renewal_count` alone (≥3 renewals = VIP), and is intentionally never
+  mixed with subscription status — a customer can be VIP with an
+  expired subscription, and vice versa.
+
+New pages: `/dashboard/products/[id]/sell` (real sale form, no longer a
+stub) and `/dashboard/products/[id]/customers` (real per-product
+customer/subscription table) replace the Phase 6 placeholders;
+`/dashboard/customers` (search by name/phone) and
+`/dashboard/customers/[id]` (profile with subscriptions, renewal
+history, and an inline renew form with duration presets) are new.
+
+**Verified — real, not assumed:** both RPCs were exercised against the
+live database with real SQL, inside a transaction that was rolled back
+afterward so nothing was left in the production tables (confirmed
+row counts were 0 across `organizations`/`customers`/`subscriptions`/
+`renewals` before and after). This caught and fixed a real bug: the
+`status` column is a Postgres enum, and the original migration's `CASE`
+expression needed an explicit cast, which the enum-typed column
+otherwise rejected — this was found by actually running the function,
+not just reading the code. Confirmed in that test: a sale correctly
+creates a customer + subscription and updates `lifetime_value`; the
+same customer buying a second product is matched by phone rather than
+duplicated; calling `renew_subscription` twice with the same
+idempotency key creates exactly one renewal row (not two) and applies
+the update exactly once; a negative duration and a negative amount are
+both rejected. The security advisor was re-run after applying the
+migration and shows no new issues beyond the same class of
+intentional, expected `SECURITY DEFINER`-callable-by-`authenticated`
+warning that `create_organization` already carries. `next build`,
+`tsc --noEmit`, and `eslint` are all clean, and the new
+`/dashboard/customers*` and `/dashboard/products/[id]/sell` routes
+307-redirect to `/login` when unauthenticated (confirmed with curl).
+**Not verified:** the actual rendered pages through a real signed-in
+browser session — that needs a live Supabase connection this sandbox's
+network can't reach (same limitation as Phases 3-6), so the UI's
+correctness rests on the database-level test above plus code review
+against the same schema, not on a logged-in screenshot.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -358,7 +431,13 @@ provisioned.
 - [x] Phase 6 — Products (code complete, build/lint verified; page
       rendering with a real signed-in session not yet visually verified
       in this environment — see below)
-- [ ] Phase 7 — Customers + subscriptions
+- [x] Phase 7 — Customers + subscriptions (`register_sale` and
+      `renew_subscription` RPCs verified against the live database with
+      a rolled-back transaction — dedup-by-phone, idempotent renewal,
+      input validation, and lifetime_value/renewal_count updates all
+      confirmed; build/tsc/eslint clean; route protection confirmed by
+      curl. Not verified: rendered UI in a real signed-in browser
+      session — same sandbox network limitation as Phases 3-6.)
 - [ ] Phase 8 — Renewals, reminders, templates
 - [ ] Phase 9 — Dashboard + analytics
 - [ ] Phase 10 — Admin

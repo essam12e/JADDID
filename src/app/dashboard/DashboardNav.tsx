@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/dashboard", label: "الرئيسية", icon: "🏠" },
   { href: "/dashboard/products", label: "المنتجات", icon: "📦" },
+  { href: "/dashboard/customers", label: "العملاء", icon: "👥" },
 ];
 
 export default function DashboardNav({ userEmail }: { userEmail: string }) {
