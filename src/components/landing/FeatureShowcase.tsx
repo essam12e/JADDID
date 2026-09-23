@@ -24,11 +24,9 @@ export default function FeatureShowcase({
         }`}
       >
         <Reveal>
-          <span className="brand-gradient-text text-sm font-bold">{eyebrow}</span>
-          <h3 className="mt-2 text-2xl font-extrabold text-[var(--jaddid-navy)]">
-            {title}
-          </h3>
-          <p className="mt-3 text-base leading-7 text-slate-600">{description}</p>
+          <span className="text-sm font-bold text-accent">{eyebrow}</span>
+          <h3 className="text-h3 mt-2 text-[var(--jaddid-navy)]">{title}</h3>
+          <p className="text-body mt-3 text-base text-slate-600">{description}</p>
           <ul className="mt-5 space-y-2.5">
             {bullets.map((b) => (
               <li key={b} className="flex items-start gap-2.5 text-sm text-slate-700">

@@ -1,5 +1,7 @@
 import Navbar from "@/components/landing/Navbar";
 import Hero from "@/components/landing/Hero";
+import Marquee from "@/components/landing/Marquee";
+import ProductStory from "@/components/landing/ProductStory";
 import HowItWorks from "@/components/landing/HowItWorks";
 import {
   ImportSection,
@@ -8,6 +10,7 @@ import {
   TemplatesSection,
   RenewalOpportunitiesSection,
 } from "@/components/landing/FeatureSections";
+import WhyJaddid from "@/components/landing/WhyJaddid";
 import DashboardPreview from "@/components/landing/DashboardPreview";
 import Pricing from "@/components/landing/Pricing";
 import FAQ from "@/components/landing/FAQ";
@@ -20,12 +23,19 @@ export default function Home() {
       <Navbar />
       <main className="flex-1">
         <Hero />
+        <div className="py-10">
+          <Marquee />
+        </div>
+        <ProductStory />
         <HowItWorks />
-        <ImportSection />
-        <CustomersSection />
-        <SubscriptionsSection />
-        <TemplatesSection />
-        <RenewalOpportunitiesSection />
+        <div id="features">
+          <ImportSection />
+          <CustomersSection />
+          <SubscriptionsSection />
+          <TemplatesSection />
+          <RenewalOpportunitiesSection />
+        </div>
+        <WhyJaddid />
         <DashboardPreview />
         <Pricing />
         <FAQ />

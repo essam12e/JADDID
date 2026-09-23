@@ -12,12 +12,24 @@
   --jaddid-surface: #f6f8ff;
   --jaddid-border: #e6eaf7;
 
+  /* Extended surfaces for a deeper, more editorial visual strategy */
+  --jaddid-ink: #0b1030;
+  --jaddid-ink-soft: #f0f3ff;
+  --jaddid-amber: #f59e0b;
+  --jaddid-red: #ef4444;
+  --jaddid-emerald: #10b981;
+
   --gradient-brand: linear-gradient(
     120deg,
     var(--jaddid-blue) 0%,
     var(--jaddid-cyan) 45%,
     var(--jaddid-purple) 100%
   );
+
+  --gradient-ink: linear-gradient(160deg, #131a3f 0%, #0b1030 100%);
+
+  --shadow-soft: 0 1px 2px rgba(19, 23, 53, 0.04), 0 12px 32px -16px rgba(19, 23, 53, 0.16);
+  --measure: 62ch;
 }
 
 @theme inline {
@@ -31,11 +43,36 @@ body {
   color: var(--foreground);
 }
 
-.brand-gradient-text {
-  background: var(--gradient-brand);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* Real typographic hierarchy */
+.text-display {
+  font-size: clamp(2.25rem, 1.6rem + 3vw, 4rem);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  font-weight: 800;
+}
+
+.text-h2 {
+  font-size: clamp(1.6rem, 1.35rem + 1.1vw, 2.4rem);
+  line-height: 1.18;
+  font-weight: 800;
+}
+
+.text-h3 {
+  font-size: clamp(1.15rem, 1.05rem + 0.4vw, 1.5rem);
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.text-body {
+  max-width: var(--measure);
+  line-height: 1.9;
+}
+
+/* NOTE: no gradient-text utility on purpose — the design system for this
+   project forbids background-clip:text gradients. Emphasis is done with
+   solid brand color + weight/size instead (see .text-accent). */
+.text-accent {
+  color: var(--jaddid-blue);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -46,5 +83,26 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Dual-row marquee */
+@keyframes marquee-rtl {
+  from { transform: translateX(0%); }
+  to { transform: translateX(-50%); }
+}
+@keyframes marquee-ltr {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0%); }
+}
+.marquee-track {
+  animation: marquee-rtl 38s linear infinite;
+}
+.marquee-track[data-dir="ltr"] {
+  animation-name: marquee-ltr;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
   }
 }
