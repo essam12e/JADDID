@@ -86,23 +86,11 @@ body {
   }
 }
 
-/* Dual-row marquee */
-@keyframes marquee-rtl {
-  from { transform: translateX(0%); }
-  to { transform: translateX(-50%); }
-}
-@keyframes marquee-ltr {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0%); }
-}
-.marquee-track {
-  animation: marquee-rtl 38s linear infinite;
-}
-.marquee-track[data-dir="ltr"] {
-  animation-name: marquee-ltr;
-}
+/* Dual-row marquee: motion is GSAP-driven (see Marquee.tsx) so it can
+   smoothly slow on hover instead of jumping; this file only needs to make
+   sure a reduced-motion viewer never gets residual transforms. */
 @media (prefers-reduced-motion: reduce) {
   .marquee-track {
-    animation: none;
+    transform: none !important;
   }
 }
