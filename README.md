@@ -780,12 +780,99 @@ and confirmed clean.
   functions) in a way a mocked unit test cannot, but it isn't something
   `npm test` replays — there's no local Postgres instance with the schema
   and policies loaded for Vitest to run against in this sandbox.
-- Browser/E2E tests against a real signed-in session — blocked by the same
-  sandbox network limitation noted since Phase 3 (this environment's
-  direct network cannot reach `*.supabase.co`). Phase 11's Playwright pass
-  (loading `/`, `/login`, `/signup` in real headless Chromium and checking
-  console/CSP output) is the closest real-browser verification performed
-  so far, but it did not exercise a signed-in flow.
+
+### E2E tests (`npm run test:e2e`, Playwright)
+
+`playwright.config.ts` + `e2e/` split deliberately into two groups by what
+they need:
+
+- **`e2e/public/**`** — no auth, no live Supabase network reachability
+  required. **24 tests, all genuinely run and passing** in this sandbox
+  against a real production build: landing page (RTL, no console errors,
+  CTAs, footer legal links), the standalone `/pricing` page, every
+  protected route's redirect-to-login-with-return-path (`/dashboard`,
+  `/dashboard/settings*`, `/onboarding`, `/admin`, `/admin/organizations`,
+  including a dynamic `[id]` route never reaching the database for an
+  anonymous request), and client-side Zod validation on signup/login/
+  forgot-password (bad email, weak/mismatched password — spec's failure-
+  case list).
+- **`e2e/authenticated/**`** — signup→verify-email redirect, login,
+  store import/dedup, sale→customer→subscription, renewal (including a
+  double-submit idempotency check), WhatsApp reminder link generation,
+  admin activation review (including the confirm-step fix), the org
+  detail/audit-log page, cross-tenant data isolation (both through the UI
+  and a raw REST call bypassing the UI entirely — the spec's own mandatory
+  test), and mobile viewport usability. These are written for real against
+  the actual UI, not stubbed — but this sandbox's network cannot reach
+  `*.supabase.co` (same limitation as every phase since 3), so each one
+  calls `test.skip()` with a specific, honest reason instead of faking a
+  pass. **Verified in this sandbox:** with no credentials set, all 22
+  skip cleanly (no false pass, no hang, no crash) against a real running
+  build. **Not yet verified:** actually green against a live account,
+  since that needs a deployed environment or unrestricted network.
+
+  To run the authenticated suite for real: deploy or use a machine with
+  normal network access, then set `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD`
+  (a verified non-admin account with at least one store/product),
+  `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` (a verified `platform_role=admin`
+  account), `E2E_USER_A_EMAIL` / `E2E_USER_A_PASSWORD` /
+  `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (two distinct accounts, each
+  with a customer, for the isolation test), and `E2E_LIVE_SUPABASE=1` to
+  opt in to the one test that performs a real signup call.
+
+## Spec-compliance audit fixes
+
+A line-by-line review against the original master build spec (not just
+this README's own claims) found 7 real gaps between what the spec asked
+for and what existed. All 7 are now fixed:
+
+1. **No confirmation before "الموافقة والتفعيل"** — the admin activation
+   approve button executed the RPC on a single click, no confirmation
+   step, unlike reject's two-step flow. Fixed with a real confirm/cancel
+   step (`src/app/admin/activations/ReviewActions.tsx`).
+2. **No Store Switcher UI** — added (`src/app/dashboard/StoreSwitcher.tsx`),
+   honestly: it always shows the real store name and will list every
+   store the moment an org has more than one (no page or RPC currently
+   lets that happen — the base plan's `stores_limit` is 1), and "+ إضافة
+   متجر" opens the real plan-limit explanation (`UpgradePrompt`, which
+   existed but was never wired to anything) instead of a dead link.
+3. **No `/dashboard/settings`** — added profile (name), store (name/URL),
+   and security (password change, logout) tabs, each backed by a real
+   Zod schema and a real Supabase update, not a stub.
+4. **No Notification Center** — the `notifications` table was already
+   being written to (e.g. by `admin_review_activation_request`) but
+   nothing ever displayed it. Added a bell + panel
+   (`src/components/dashboard/NotificationBell.tsx`) that reads and can
+   mark rows read, using the RLS/grants that already existed for it.
+5. **No standalone `/pricing` page** — added, reusing the same live
+   `Pricing` component/query as the landing page section.
+6. **No per-organization admin detail/audit-log view** — added
+   `/admin/organizations/[id]`. Building it surfaced a real, separate RLS
+   gap: platform admins had no policy letting them read another org's
+   `stores`/`customers`/`subscriptions`/`products` at all (only
+   organizations/account_subscriptions/plans/profiles/audit_logs were
+   admin-visible from Phases 2 and 10) — so an admin's view of another
+   org's store/customer/subscription counts would have silently returned
+   nothing. Fixed with 4 new read-only `..._admin_select` policies,
+   applied to the live project (migration
+   `20260923231116_phase13_admin_cross_org_select.sql`) and confirmed via
+   the security advisor.
+
+   Building this page also surfaced a likely pre-existing bug in
+   `admin/organizations/page.tsx` (present before this audit): its
+   `organization_members.user_id → profiles(full_name)` embed relies on
+   PostgREST resolving a relationship between two tables that both
+   reference `auth.users` but not each other directly — there is no FK
+   for PostgREST to traverse, so every owner name likely rendered as
+   "بدون اسم" instead of erroring loudly. This sandbox's network can't
+   reach the live REST API to confirm the failure mode directly, but the
+   schema fact (no `organization_members`→`profiles` or
+   `audit_logs`→`profiles` FK exists) is confirmed. Fixed in both the org
+   list and the new detail page by resolving names with a separate
+   `profiles` query instead of relying on the embed.
+7. **No E2E test suite** — added (`e2e/`, `playwright.config.ts`,
+   `npm run test:e2e`); see Testing (Phase 12) above for what's genuinely
+   passing here versus what needs a live-network environment to run.
 
 ## Deployment
 
@@ -895,17 +982,20 @@ provisioned.
       to set it. Not verified: an actual exploit attempt from a real
       lower-privileged signed-in session — same sandbox network
       limitation as Phases 3-10.)
-- [x] Phase 12 — Tests (Vitest, 132 tests / 13 files, all passing;
+- [x] Phase 12 — Tests (Vitest, 140 tests / 14 files, all passing;
       domain logic, SSRF guard with DNS mocked, importer adapters via
       fixtures, validation schemas; found and fixed a real IPv4-mapped-
       IPv6 SSRF bypass in the hex-form literal while writing the SSRF
-      tests; `tsc`/`eslint`/`next build` re-verified clean)
+      tests; `tsc`/`eslint`/`next build` re-verified clean. Plus a real
+      Playwright E2E suite — see the E2E section above for what's
+      genuinely passing versus what needs a live-network environment.)
 - [~] Phase 13 — GitHub/Vercel production deployment (Vercel project
       live at j-addid.com, connected to `main`; a Resend sending domain
       was registered and a scoped API key wired into Vercel env vars,
       but its DNS records are not yet verified; `SUPABASE_SERVICE_ROLE_KEY`
       is still missing — see Deployment above for the exact remaining
-      list)
+      list. Separately, a line-by-line spec audit found and fixed 7 real
+      gaps — see "Spec-compliance audit fixes" above.)
 - [ ] Phase 14 — Final production verification (blocked on Phase 13's
       remaining items, plus this environment's outbound network being
       restricted from `j-addid.com` and `*.supabase.co` directly — same
