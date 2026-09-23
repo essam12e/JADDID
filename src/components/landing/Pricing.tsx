@@ -51,7 +51,8 @@ export default async function Pricing() {
   const list = (plans ?? []) as Plan[];
 
   return (
-    <section id="pricing" className="mx-auto max-w-6xl px-6 py-20">
+    <section id="pricing" className="section-edge-top relative bg-white px-6 pb-20 pt-16 sm:pt-20">
+      <div className="mx-auto max-w-6xl">
       <Reveal>
         <SectionHeading eyebrow="الأسعار" title="باقة واحدة بسيطة، بدون تعقيد" />
       </Reveal>
@@ -145,6 +146,7 @@ export default async function Pricing() {
             })}
           </div>
         )}
+      </div>
       </div>
     </section>
   );

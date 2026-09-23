@@ -32,6 +32,36 @@
   --measure: 62ch;
 }
 
+/* Physical section transitions: one section rests on top of the next via
+   a rounded edge + shadow, instead of a gradient seam between them. */
+.section-edge-bottom {
+  position: relative;
+  z-index: 2;
+  border-radius: 0 0 2.75rem 2.75rem;
+  box-shadow:
+    0 40px 80px -30px rgba(11, 16, 48, 0.45),
+    0 16px 32px -20px rgba(11, 16, 48, 0.3);
+}
+
+.section-edge-top {
+  position: relative;
+  z-index: 1;
+  margin-top: -2.75rem;
+  border-radius: 2.75rem 2.75rem 0 0;
+}
+
+/* For a section sandwiched between two others, resting on the one above
+   and casting its own shadow onto the one below. */
+.section-edge-both {
+  position: relative;
+  z-index: 2;
+  margin-top: -2.75rem;
+  border-radius: 2.75rem;
+  box-shadow:
+    0 40px 80px -30px rgba(11, 16, 48, 0.45),
+    0 16px 32px -20px rgba(11, 16, 48, 0.3);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -92,5 +122,16 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .marquee-track {
     transform: none !important;
+  }
+}
+
+@keyframes feature-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
