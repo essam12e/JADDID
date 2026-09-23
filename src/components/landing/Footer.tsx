@@ -36,11 +36,11 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-2">
               <Image
-                src="/brand/jaddid-logo.png"
+                src="/brand/jaddid-icon-transparent.png"
                 alt="جَدِّد | JADDID"
                 width={32}
                 height={32}
-                className="h-8 w-8 rounded-lg"
+                className="h-8 w-8"
               />
               <span className="font-extrabold text-[var(--jaddid-navy)]">جَدِّد</span>
             </div>

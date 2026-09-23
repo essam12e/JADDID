@@ -2,21 +2,37 @@ export default function SectionHeading({
   eyebrow,
   title,
   subtitle,
+  align = "center",
 }: {
   eyebrow?: string;
   title: string;
   subtitle?: string;
+  align?: "center" | "start";
 }) {
   return (
-    <div className="mx-auto max-w-2xl text-center">
+    <div
+      className={
+        align === "center"
+          ? "mx-auto max-w-2xl text-center"
+          : "max-w-2xl text-right"
+      }
+    >
       {eyebrow ? (
-        <span className="brand-gradient-text text-sm font-bold">{eyebrow}</span>
+        <span className="inline-flex items-center gap-2 text-sm font-bold text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--jaddid-blue)]" />
+          {eyebrow}
+        </span>
       ) : null}
-      <h2 className="mt-2 text-2xl font-extrabold text-[var(--jaddid-navy)] sm:text-3xl">
-        {title}
-      </h2>
+      <h2 className="text-h2 mt-2 text-[var(--jaddid-navy)]">{title}</h2>
       {subtitle ? (
-        <p className="mt-3 text-base leading-7 text-slate-600">{subtitle}</p>
+        <p
+          className={
+            "text-body mt-3 text-base text-slate-600 " +
+            (align === "center" ? "mx-auto" : "")
+          }
+        >
+          {subtitle}
+        </p>
       ) : null}
     </div>
   );

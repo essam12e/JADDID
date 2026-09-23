@@ -1,13 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef } from "react";
 import OrbitMotif from "./OrbitMotif";
 
 export default function Hero() {
-  const logoRef = useRef<HTMLDivElement>(null);
+  const visualRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
-  const sweepRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia(
@@ -25,13 +23,13 @@ export default function Hero() {
           .from(".hero-title", { opacity: 0, y: 18, duration: 0.6 }, "-=0.3")
           .from(".hero-sub", { opacity: 0, y: 14, duration: 0.5 }, "-=0.35")
           .from(".hero-ctas > *", { opacity: 0, y: 12, duration: 0.45, stagger: 0.08 }, "-=0.3")
-          .from(logoRef.current, { opacity: 0, scale: 0.85, duration: 0.7 }, "-=0.5");
+          .from(visualRef.current, { opacity: 0, scale: 0.9, duration: 0.7 }, "-=0.5");
 
-        // Calm, continuous float + tilt — never spinning or bouncy.
-        gsap.to(logoRef.current, {
-          y: -14,
-          rotate: 1.5,
-          duration: 4.2,
+        // Calm, continuous float on the whole logo+orbit composition —
+        // never spinning or bouncy.
+        gsap.to(visualRef.current, {
+          y: -10,
+          duration: 4.6,
           repeat: -1,
           yoyo: true,
           ease: "sine.inOut",
@@ -39,20 +37,13 @@ export default function Hero() {
 
         // Soft breathing glow behind the mark.
         gsap.to(glowRef.current, {
-          opacity: 0.55,
+          opacity: 0.5,
           scale: 1.08,
           duration: 3.4,
           repeat: -1,
           yoyo: true,
           ease: "sine.inOut",
         });
-
-        // Gradient light sweep across the mark.
-        gsap.fromTo(
-          sweepRef.current,
-          { xPercent: -130 },
-          { xPercent: 130, duration: 3.2, repeat: -1, repeatDelay: 1.6, ease: "power1.inOut" },
-        );
       });
     })();
 
@@ -101,38 +92,16 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* Logo visual — large, animated, asymmetric */}
+        {/* Logo + orbit — one integrated composition, logo at true ring center */}
         <div className="relative flex items-center justify-center lg:order-1 lg:justify-start">
           <div
             ref={glowRef}
-            className="pointer-events-none absolute h-64 w-64 rounded-full opacity-30 blur-3xl sm:h-80 sm:w-80"
+            className="pointer-events-none absolute h-56 w-56 rounded-full opacity-25 blur-3xl sm:h-72 sm:w-72"
             style={{ background: "var(--gradient-brand)" }}
             aria-hidden="true"
           />
-          <OrbitMotif
-            size={320}
-            className="pointer-events-none absolute hidden sm:block"
-          />
-          <div ref={logoRef} className="relative">
-            <div className="relative overflow-hidden rounded-[2rem]">
-              <Image
-                src="/brand/jaddid-logo.png"
-                alt="جَدِّد | JADDID"
-                width={220}
-                height={220}
-                priority
-                className="relative z-10 h-44 w-44 rounded-[2rem] sm:h-56 sm:w-56"
-              />
-              <div
-                ref={sweepRef}
-                className="pointer-events-none absolute inset-y-0 z-20 w-1/3 -skew-x-12"
-                style={{
-                  background:
-                    "linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)",
-                }}
-                aria-hidden="true"
-              />
-            </div>
+          <div ref={visualRef} className="relative w-56 sm:w-72 lg:w-[22rem]">
+            <OrbitMotif size={360} className="w-full" />
           </div>
         </div>
       </div>
