@@ -124,6 +124,56 @@ belongs to a different project and is intentionally not reused here per
 project-isolation rules). Email sending will not work until a real
 domain is added and DNS-verified.
 
+## Authentication
+
+Built: signup, login, email verification (both the OTP-code screen and a
+link-based `/auth/callback` fallback), forgot/reset password, logout, and
+middleware that refreshes the session on every request and gates
+`/dashboard`, `/onboarding`, and `/admin` server-side (not just by hiding
+a link) with a redirect back to the originally-requested page after
+login.
+
+**What "email verification" actually depends on right now:** Supabase's
+default email template sends a confirmation *link*, not a 6-digit code —
+the OTP screen only works once the "Confirm signup" template in the
+Supabase dashboard is edited to include `{{ .Token }}`. No management-API
+tool was available in this session to make that change, so today the
+link (via `/auth/callback`) is what actually works; the OTP UI is built
+and wired to `verifyOtp`/`resend` but unverified until that template
+change is made.
+
+**What "sending the email" depends on:** until a real domain exists for
+JADDID and is configured as custom SMTP (Resend) in Supabase Auth
+settings, Supabase falls back to its own built-in email sender, which is
+rate-limited and not meant for production. Password-reset and
+confirmation emails will not reliably reach real users until that's set
+up (see Resend setup above and the domain discussion in project history).
+
+**User enumeration:** the app layer shows a generic message on both
+signup failure and forgot-password submission regardless of whether the
+email exists. Supabase's own API can still be more specific in some
+signup-failure cases at the network level — that residual gap is
+inherited from the platform, not hidden here.
+
+**Not yet built:** custom rate limiting / brute-force protection beyond
+whatever Supabase Auth enforces by default (no separate limiter — e.g.
+Redis-backed — has been added); OTP abuse protection beyond Supabase's
+own attempt/expiry limits; "remember me" does not currently change
+session persistence (Supabase's SSR cookie session behaves the same
+either way) — the checkbox exists in the UI but is not yet wired to a
+real difference in behavior.
+
+**Verified in this environment:** `npm run build`, `tsc --noEmit`, and
+`eslint` all pass; middleware correctly 307-redirects an unauthenticated
+request to `/dashboard` to `/login?next=/dashboard` (checked with curl
+against a local production server). **Not verified in this
+environment:** an actual signup/login/reset round-trip against the live
+Supabase Auth service — this sandbox's network egress blocks direct
+HTTPS to `*.supabase.co` (only the Supabase MCP tool's database access
+works here, which doesn't exercise the Auth/GoTrue HTTP API). This needs
+to be tested either after deployment to Vercel or by running the app
+locally on a normal network.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -155,7 +205,9 @@ provisioned.
 - [x] Phase 1 — Repository, architecture, dependencies
 - [x] Phase 2 — Supabase schema, migrations, RLS (cross-tenant isolation
       test with real accounts still pending — see Supabase setup above)
-- [ ] Phase 3 — Auth, verification, password recovery
+- [x] Phase 3 — Auth, verification, password recovery (code complete,
+      build/lint verified; live network calls to Supabase Auth not yet
+      exercised in this environment — see Authentication below)
 - [ ] Phase 4 — Landing (full) + onboarding flow
 - [ ] Phase 5 — Store import architecture
 - [ ] Phase 6 — Products

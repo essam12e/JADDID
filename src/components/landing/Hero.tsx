@@ -29,7 +29,9 @@ export default function Hero() {
         </p>
 
         {/* Store URL import prompt */}
-        <form className="mt-8 flex w-full max-w-xl flex-col gap-3 sm:flex-row" action="/onboarding">
+        {/* Sends new visitors to create an account first — the importer
+            itself (Phase 5) requires a signed-in store owner. */}
+        <form className="mt-8 flex w-full max-w-xl flex-col gap-3 sm:flex-row" action="/signup">
           <label htmlFor="store-url" className="sr-only">
             أدخل رابط متجرك
           </label>
