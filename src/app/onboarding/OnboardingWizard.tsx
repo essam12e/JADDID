@@ -39,7 +39,66 @@ export default function OnboardingWizard({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  type ImportResult = {
+    status: "completed" | "partial" | "failed";
+    total: number;
+    imported: number;
+    unchanged: number;
+    failed: number;
+    attempts?: { adapter: string; reason: string }[];
+  };
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualAdded, setManualAdded] = useState(false);
+
   const progressPct = ((step - 1) / (STEP_LABELS.length - 1)) * 100;
+
+  async function runImport() {
+    if (!storeId || !storeUrl) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeId, sourceUrl: storeUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportResult({ status: "failed", total: 0, imported: 0, unchanged: 0, failed: 0 });
+      } else {
+        setImportResult(data);
+      }
+    } catch {
+      setImportResult({ status: "failed", total: 0, imported: 0, unchanged: 0, failed: 0 });
+    }
+    setImporting(false);
+  }
+
+  async function addManualProduct() {
+    if (!storeId || !manualName.trim()) return;
+    const supabase = createClient();
+    const { data: storeRow } = await supabase
+      .from("stores")
+      .select("organization_id")
+      .eq("id", storeId)
+      .single();
+    if (!storeRow) return;
+
+    await supabase.from("products").insert({
+      organization_id: storeRow.organization_id,
+      store_id: storeId,
+      name: manualName.trim(),
+      price: manualPrice ? Number(manualPrice) : null,
+      currency: "SAR",
+    });
+    setManualAdded(true);
+    setManualName("");
+    setManualPrice("");
+  }
 
   async function submitStoreName(e: React.FormEvent) {
     e.preventDefault();
@@ -202,15 +261,109 @@ export default function OnboardingWizard({
           )}
 
           {step === 4 && (
-            <div className="space-y-4 text-center">
-              <h2 className="text-lg font-bold text-[var(--jaddid-navy)]">
+            <div className="space-y-4">
+              <h2 className="text-center text-lg font-bold text-[var(--jaddid-navy)]">
                 استيراد المنتجات
               </h2>
-              <p className="rounded-lg bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-700">
-                ميزة الاستيراد التلقائي من رابط متجرك قيد البناء في المرحلة
-                التالية، ولن نعرضها كأنها تعمل قبل اختبارها فعليًا. يمكنك
-                إضافة منتجاتك يدويًا من لوحة التحكم في أي وقت.
-              </p>
+
+              {!storeUrl ? (
+                <p className="rounded-lg bg-slate-50 px-3 py-3 text-center text-sm leading-6 text-slate-600">
+                  لم تُدخل رابط متجر، فلا يوجد ما نستورده تلقائيًا. يمكنك
+                  إضافة منتج يدويًا الآن أو لاحقًا من لوحة التحكم.
+                </p>
+              ) : !importResult ? (
+                <div className="text-center">
+                  <p className="mb-4 text-sm leading-6 text-slate-600">
+                    سنحاول قراءة منتجات متجرك من:{" "}
+                    <span dir="ltr" className="font-medium text-slate-800">
+                      {storeUrl}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={runImport}
+                    disabled={importing}
+                    className="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-70"
+                    style={{ background: "var(--gradient-brand)" }}
+                  >
+                    {importing ? "جاري الاستيراد..." : "بدء الاستيراد"}
+                  </button>
+                </div>
+              ) : importResult.status === "failed" ? (
+                <div className="space-y-3">
+                  <p className="rounded-lg bg-red-50 px-3 py-3 text-sm leading-6 text-red-700">
+                    تعذّر استيراد أي منتجات من هذا الرابط.
+                    {importResult.attempts && importResult.attempts.length > 0 ? (
+                      <span className="mt-2 block text-xs text-red-600" dir="ltr">
+                        {importResult.attempts.map((a) => a.reason).join(" — ")}
+                      </span>
+                    ) : null}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setImportResult(null)}
+                    className="w-full rounded-xl border border-[var(--jaddid-border)] py-2.5 text-sm font-semibold text-slate-600"
+                  >
+                    حاول رابطًا آخر
+                  </button>
+                </div>
+              ) : (
+                <p
+                  className={`rounded-lg px-3 py-3 text-center text-sm leading-6 ${
+                    importResult.status === "completed"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  تم استيراد {importResult.imported} من {importResult.total} منتجًا
+                  {importResult.failed > 0
+                    ? `، وتعذّر استيراد ${importResult.failed}.`
+                    : "."}
+                </p>
+              )}
+
+              {(!storeUrl || importResult) && (
+                <div className="border-t border-[var(--jaddid-border)] pt-4">
+                  {!showManualAdd ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowManualAdd(true)}
+                      className="w-full rounded-xl border border-[var(--jaddid-border)] py-2.5 text-sm font-semibold text-slate-600"
+                    >
+                      + إضافة منتج يدويًا
+                    </button>
+                  ) : manualAdded ? (
+                    <p className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-700">
+                      تمت إضافة المنتج.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <FormField
+                        label="اسم المنتج"
+                        type="text"
+                        value={manualName}
+                        onChange={(e) => setManualName(e.target.value)}
+                      />
+                      <FormField
+                        label="السعر (اختياري)"
+                        type="number"
+                        dir="ltr"
+                        value={manualPrice}
+                        onChange={(e) => setManualPrice(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={addManualProduct}
+                        className="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white"
+                        style={{ background: "var(--gradient-brand)" }}
+                      >
+                        إضافة
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={advanceFromImport}
@@ -218,7 +371,7 @@ export default function OnboardingWizard({
                 className="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-70"
                 style={{ background: "var(--gradient-brand)" }}
               >
-                متابعة الآن
+                متابعة
               </button>
             </div>
           )}

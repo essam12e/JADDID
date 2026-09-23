@@ -217,6 +217,69 @@ code but have not been exercised end-to-end here for the same network
 reason; this needs verification after deployment to Vercel (which has
 normal internet access) or on a machine with an unrestricted network.
 
+## Store importer (Phase 5)
+
+Architecture: `src/lib/importer/` — a `StoreImporter` interface
+(`types.ts`), one adapter per source (`adapters/shopify.ts` uses
+Shopify's public `/products.json` endpoint; `adapters/jsonld.ts` reads
+schema.org `Product` structured data most storefronts already publish
+for SEO), and an orchestrator (`index.ts`) that tries each adapter in
+order and returns which one worked or exactly why every one failed.
+Adding a new platform means writing one more adapter class — nothing
+else changes, per the project's requirement that this not need a
+rewrite later.
+
+**SSRF protection** (`ssrf.ts`) is the part of this feature that matters
+most, since it accepts a URL from the user and fetches it server-side.
+It blocks non-http(s) schemes, literal private/loopback/link-local/
+cloud-metadata IPs (including `169.254.169.254`), and — importantly —
+resolves DNS and checks *every* returned address before fetching, which
+is what stops DNS-rebinding (a public hostname that resolves to a
+private IP). Redirects are never auto-followed; each hop is re-validated
+through the same check. **This was actually tested, not just written**:
+a standalone script exercised it against `169.254.169.254`, `127.0.0.1`,
+`localhost`, private RFC1918 ranges, `::1`, an IPv6 link-local address,
+a non-http(s) scheme, and — the real DNS-rebinding case —
+`localtest.me`, a public domain that resolves to `127.0.0.1`; all were
+correctly blocked, and ordinary public hosts were correctly allowed.
+
+**Duplicate detection**: each extracted product carries a `fingerprint`
+(a hash of the source-specific stable id — Shopify's numeric product id,
+or the JSON-LD product URL) stored in `products.source_fingerprint`. A
+re-import matches on `(store_id, fingerprint)`: new products are
+inserted, changed ones are updated, and unchanged ones are left alone
+and reported separately — never duplicated.
+
+**Import jobs**: `POST /api/import` creates an `import_jobs` row
+(`processing` → `completed`/`partial`/`failed`), runs synchronously
+within the request (no background queue/worker exists yet — this is a
+scaling limitation worth flagging: fine for a small-to-medium catalog
+within a serverless function's time limit, not a real async job system
+for very large catalogs), and reports exact counts (`imported`,
+`unchanged`, `failed`) rather than a blanket success/failure. A failed
+extraction shows the real reason from each adapter attempted, in
+Arabic, rather than pretending it worked.
+
+**Manual add fallback**: onboarding step 4 always offers "add a product
+manually" — the importer failing (or the merchant not giving a store URL
+at all) never leaves them stuck, per the project's requirement.
+
+**What has and hasn't been verified:** the SSRF guard was tested for
+real, against real inputs, with real results shown above — not assumed.
+The two adapters' field-mapping/parsing logic was verified against
+realistic sample payloads (a Shopify-shaped JSON response, and an HTML
+page with both a valid and a deliberately malformed JSON-LD block,
+confirming one bad block doesn't fail the whole extraction). **Not
+verified:** an actual end-to-end import against a real, live store —
+this sandbox's network egress blocks outbound HTTPS to arbitrary
+internet hosts entirely (confirmed directly: `curl` to `example.com`
+itself was rejected by the egress policy, not just Supabase). This is
+the same class of environment limitation as Phases 3 and 4, just
+covering more of the internet this time. It needs testing against a
+real store once deployed or on an unrestricted network — no adapter has
+been marked "PASS" against a live target because it hasn't run against
+one yet.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -255,7 +318,10 @@ provisioned.
       build/lint verified; live Supabase reads on the landing page and
       the onboarding wizard's writes are not yet exercised end-to-end in
       this environment — see below)
-- [ ] Phase 5 — Store import architecture
+- [x] Phase 5 — Store import architecture (SSRF guard verified with real
+      tests including DNS-rebinding; adapter parsing logic verified
+      against sample payloads; live network extraction from a real store
+      not yet exercised in this environment — see below)
 - [ ] Phase 6 — Products
 - [ ] Phase 7 — Customers + subscriptions
 - [ ] Phase 8 — Renewals, reminders, templates
