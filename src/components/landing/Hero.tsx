@@ -84,7 +84,7 @@ export default function Hero() {
               ابدأ مع جَدِّد
             </a>
             <a
-              href="#how-it-works"
+              href="#features"
               className="w-full rounded-xl border border-[var(--jaddid-border)] bg-white px-7 py-3.5 text-center text-sm font-bold text-[var(--jaddid-navy)] transition-colors hover:border-[var(--jaddid-blue)]/40 sm:w-auto"
             >
               اكتشف كيف يعمل

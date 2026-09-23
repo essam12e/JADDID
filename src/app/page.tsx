@@ -2,7 +2,6 @@ import Navbar from "@/components/landing/Navbar";
 import Hero from "@/components/landing/Hero";
 import Marquee from "@/components/landing/Marquee";
 import ProductStory from "@/components/landing/ProductStory";
-import HowItWorks from "@/components/landing/HowItWorks";
 import {
   ImportSection,
   CustomersSection,
@@ -27,7 +26,6 @@ export default function Home() {
           <Marquee />
         </div>
         <ProductStory />
-        <HowItWorks />
         <div id="features">
           <ImportSection />
           <CustomersSection />

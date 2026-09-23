@@ -30,13 +30,19 @@ const FEATURE_LABELS: Record<string, string> = {
  */
 export default async function Pricing() {
   const supabase = await createClient();
+  // A hard timeout on this query: without it, a slow or unreachable
+  // database would block the entire homepage's server render indefinitely
+  // (this section is the only one on the page that depends on a live
+  // network call). Timing out falls back to the same friendly message as
+  // any other fetch failure below, rather than hanging the page.
   const { data: plans, error: plansError } = await supabase
     .from("plans")
     .select(
       "id, slug, name, price, currency, billing_period, active_customer_limit, stores_limit, features",
     )
     .eq("is_active", true)
-    .order("price", { ascending: true });
+    .order("price", { ascending: true })
+    .abortSignal(AbortSignal.timeout(6000));
 
   if (plansError) {
     console.error("[Pricing] failed to load plans:", plansError);

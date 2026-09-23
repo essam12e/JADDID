@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const LINKS = [
-  { href: "/#how-it-works", label: "كيف يعمل" },
   { href: "/#features", label: "المميزات" },
   { href: "/#pricing", label: "الأسعار" },
   { href: "/#faq", label: "الأسئلة الشائعة" },

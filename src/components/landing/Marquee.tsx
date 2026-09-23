@@ -1,51 +1,61 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { BRAND_ICONS, type BrandIcon } from "./brandIcons";
 
 /**
- * Dual-row infinite service marquee. Real brand logo assets aren't on hand
- * and hotlinking third-party logo images isn't acceptable, so each chip
- * uses a small, deliberately-designed glyph badge (initial + category
- * color) instead of a wordmark — illustrative, not a claim of partnership.
- * Spans design/creative, AI, productivity, dev tools, gaming and
- * entertainment so it doesn't read as a two-brand showcase.
+ * Dual-row infinite service marquee. Each chip renders the brand's real,
+ * official mark (bundled SVG path data — see brandIcons.ts), spanning
+ * design, AI, productivity, dev tools, gaming and entertainment so it
+ * doesn't read as a two-brand showcase.
  */
-type Service = { name: string; letter: string; color: string };
+type Service = { name: string; icon: BrandIcon };
+
+function svc(slug: keyof typeof BRAND_ICONS, name?: string): Service {
+  return { name: name ?? BRAND_ICONS[slug].title, icon: BRAND_ICONS[slug] };
+}
 
 const ROW_A: Service[] = [
-  { name: "Adobe Creative Cloud", letter: "A", color: "#DA1F26" },
-  { name: "ChatGPT Plus", letter: "G", color: "#10A37F" },
-  { name: "Microsoft 365", letter: "M", color: "#2F6BFF" },
-  { name: "Notion", letter: "N", color: "#131735" },
-  { name: "PlayStation Plus", letter: "P", color: "#1E2A5E" },
-  { name: "Netflix", letter: "N", color: "#E11D2E" },
-  { name: "GitHub Copilot", letter: "GH", color: "#131735" },
-  { name: "Canva Pro", letter: "C", color: "#8B5CF6" },
+  svc("figma"),
+  svc("claude", "Claude Pro"),
+  svc("notion"),
+  svc("playstation", "PlayStation Plus"),
+  svc("netflix"),
+  svc("githubcopilot", "GitHub Copilot"),
+  svc("zoom", "Zoom Pro"),
+  svc("spotify"),
 ];
 
 const ROW_B: Service[] = [
-  { name: "Spotify", letter: "S", color: "#1DB954" },
-  { name: "Figma", letter: "F", color: "#8B5CF6" },
-  { name: "Claude Pro", letter: "CL", color: "#DE7B4C" },
-  { name: "Google Workspace", letter: "GW", color: "#2F6BFF" },
-  { name: "Zoom Pro", letter: "Z", color: "#22D3EE" },
-  { name: "Xbox Game Pass", letter: "X", color: "#107C10" },
-  { name: "YouTube Premium", letter: "YT", color: "#E11D2E" },
-  { name: "Shahid VIP", letter: "SH", color: "#1E2A5E" },
-  { name: "Dropbox", letter: "D", color: "#2F6BFF" },
+  svc("sketch"),
+  svc("perplexity", "Perplexity Pro"),
+  svc("dropbox"),
+  svc("steam"),
+  svc("youtube", "YouTube Premium"),
+  svc("vercel"),
+  svc("airtable"),
+  svc("soundcloud"),
 ];
 
 function Chip({ service }: { service: Service }) {
+  const { icon } = service;
   return (
-    <span className="flex h-11 shrink-0 items-center gap-2.5 rounded-full border border-[var(--jaddid-border)] bg-white py-2 pl-4 pr-2 text-sm font-semibold text-slate-700 shadow-sm">
+    <span className="flex h-11 shrink-0 items-center gap-2.5 rounded-full border border-[var(--jaddid-border)] bg-white py-2 pl-4 pr-2.5 text-sm font-semibold text-slate-700 shadow-sm">
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold text-white"
-        style={{ background: service.color }}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+        style={{ background: `#${icon.hex}` }}
         aria-hidden="true"
       >
-        {service.letter}
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4"
+          fill="#ffffff"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path d={icon.path} />
+        </svg>
       </span>
-      {service.name}
+      <span className="whitespace-nowrap">{service.name}</span>
     </span>
   );
 }
@@ -96,7 +106,15 @@ function Row({
   }, [reverse, duration]);
 
   return (
-    <div className="overflow-hidden">
+    <div
+      className="overflow-hidden"
+      style={{
+        maskImage:
+          "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+      }}
+    >
       <div
         ref={trackRef}
         className="marquee-track flex w-max gap-3 will-change-transform"
