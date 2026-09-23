@@ -118,11 +118,20 @@ sign-off, per the project's own testing requirements.
 
 ## Resend setup
 
-A sending domain is required and does not yet exist for JADDID (the one
-domain currently verified on this Resend account, `auth.trend-box.online`,
-belongs to a different project and is intentionally not reused here per
-project-isolation rules). Email sending will not work until a real
-domain is added and DNS-verified.
+A dedicated sending domain, `mail.j-addid.com`, has been registered in
+Resend (isolated from `auth.trend-box.online`, which belongs to a
+different project, per project-isolation rules) and a sending-only API
+key restricted to it has been created and set as `RESEND_API_KEY` /
+`RESEND_FROM_EMAIL` on the Vercel project.
+
+**Status: DNS not yet verified.** Resend returned 4 DNS records
+(a DKIM TXT, an SPF MX + TXT, and a CNAME, all under the `mail.`
+subdomain) that must be added wherever `j-addid.com`'s DNS is managed,
+then confirmed with Resend's domain-verification check. Until that
+verification completes, `RESEND_API_KEY`/`RESEND_FROM_EMAIL` are set but
+sends will fail — this is expected, not a bug. See the project's chat
+history for the exact record values, or re-fetch them from the Resend
+dashboard for the `mail.j-addid.com` domain.
 
 ## Authentication
 
@@ -764,9 +773,26 @@ and confirmed clean.
 
 ## Deployment
 
-Not yet deployed. Target: an independent Vercel project, connected only to
-this repository, with separate env vars per environment
-(development/preview/production).
+**Live in production:** an independent Vercel project (`jaddid`), connected
+only to this repository's `main` branch, deployed and READY at
+`https://j-addid.com` (custom domain verified, plus the default
+`jaddid.vercel.app`).
+
+Env vars set on Vercel (production + preview): `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`, `RESEND_API_KEY`,
+`RESEND_FROM_EMAIL`.
+
+**Still missing / blocking real functionality:**
+- `SUPABASE_SERVICE_ROLE_KEY` is not set — it's a secret only available
+  from the Supabase dashboard (Project Settings → API), so it has to be
+  supplied by a human rather than fetched by a tool. Admin-privileged
+  server code will fail until it's added.
+- `mail.j-addid.com`'s DNS records are not yet added/verified (see
+  Resend setup above) — email sending will fail until that's done.
+- Supabase Auth dashboard settings (the "Confirm signup" email template's
+  `{{ .Token }}`, custom SMTP via Resend, "leaked password protection")
+  are still manual dashboard steps — no management-API tool for them was
+  available in any session so far.
 
 ## Security notes
 
@@ -858,5 +884,13 @@ provisioned.
       fixtures, validation schemas; found and fixed a real IPv4-mapped-
       IPv6 SSRF bypass in the hex-form literal while writing the SSRF
       tests; `tsc`/`eslint`/`next build` re-verified clean)
-- [ ] Phase 13 — GitHub/Vercel production deployment
-- [ ] Phase 14 — Final production verification
+- [~] Phase 13 — GitHub/Vercel production deployment (Vercel project
+      live at j-addid.com, connected to `main`; a Resend sending domain
+      was registered and a scoped API key wired into Vercel env vars,
+      but its DNS records are not yet verified; `SUPABASE_SERVICE_ROLE_KEY`
+      is still missing — see Deployment above for the exact remaining
+      list)
+- [ ] Phase 14 — Final production verification (blocked on Phase 13's
+      remaining items, plus this environment's outbound network being
+      restricted from `j-addid.com` and `*.supabase.co` directly — same
+      limitation noted since Phase 3)
