@@ -280,6 +280,39 @@ real store once deployed or on an unrestricted network — no adapter has
 been marked "PASS" against a live target because it hasn't run against
 one yet.
 
+## Products (Phase 6)
+
+`/dashboard/products` lists the store's products as cards (image with a
+broken-image fallback, name, price, per-product counts of customers /
+active subscriptions / expiring-soon-within-7-days computed from real
+`subscriptions` rows, not placeholders), plus "add product" and
+"re-import" entry points, matching the empty state copy specified for
+zero products.
+
+Manual add/edit (`/dashboard/products/new`, `/dashboard/products/[id]/edit`)
+share one form and one Zod schema, with URL validation on the image,
+renewal, and source-URL fields (the Renewal Link Vault field from the
+spec). Re-import (`/dashboard/products/import`) reuses the Phase 5
+`/api/import` endpoint against the store's saved URL and shows the same
+honest imported/unchanged/failed breakdown as onboarding.
+
+Each product card includes "تسجيل عملية بيع" and "العملاء" buttons as
+the spec requires, but since the customers/subscriptions data model
+work is Phase 7 and doesn't exist yet, both routes are real pages that
+say so plainly and link back — not dead links, and not forms that
+silently discard input. They'll become the real flows once Phase 7
+lands.
+
+**Verified:** build, `tsc --noEmit`, `eslint` all clean; every new route
+under `/dashboard/products/*` correctly 307-redirects to `/login` when
+unauthenticated (confirmed with curl against a local production
+server), same as the rest of `/dashboard`. **Not verified:** the actual
+rendered page with real product data and a signed-in session — that
+needs a live Supabase connection this sandbox's network can't reach
+(same limitation as Phases 3-5), so the products list, counts, and
+image-fallback behavior are correct by code review and consistent with
+the schema, not confirmed by looking at a real logged-in screenshot yet.
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -322,7 +355,9 @@ provisioned.
       tests including DNS-rebinding; adapter parsing logic verified
       against sample payloads; live network extraction from a real store
       not yet exercised in this environment — see below)
-- [ ] Phase 6 — Products
+- [x] Phase 6 — Products (code complete, build/lint verified; page
+      rendering with a real signed-in session not yet visually verified
+      in this environment — see below)
 - [ ] Phase 7 — Customers + subscriptions
 - [ ] Phase 8 — Renewals, reminders, templates
 - [ ] Phase 9 — Dashboard + analytics

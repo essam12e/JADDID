@@ -56,20 +56,18 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-        هذه لوحة تحكم مبدئية للتحقق من عمل تسجيل الدخول فعليًا — لوحة
-        التحكم الكاملة (الإحصائيات، &ldquo;يحتاج إجراء اليوم&rdquo;، إلخ) قادمة في
-        مرحلة لاحقة.
-      </p>
+      <a
+        href="/dashboard/products"
+        className="mt-6 inline-block rounded-xl px-5 py-2.5 text-sm font-bold text-white"
+        style={{ background: "var(--gradient-brand)" }}
+      >
+        عرض المنتجات
+      </a>
 
-      <form action="/auth/signout" method="post" className="mt-6">
-        <button
-          type="submit"
-          className="rounded-xl border border-[var(--jaddid-border)] px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          تسجيل الخروج
-        </button>
-      </form>
+      <p className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        هذه لوحة تحكم مبدئية — الإحصائيات و&ldquo;يحتاج إجراء اليوم&rdquo;
+        قادمة في مرحلة لاحقة (بعد بناء العملاء والاشتراكات).
+      </p>
     </main>
   );
 }
