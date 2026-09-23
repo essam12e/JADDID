@@ -9,6 +9,8 @@ const LINKS = [
   { href: "/dashboard", label: "الرئيسية", icon: "🏠" },
   { href: "/dashboard/products", label: "المنتجات", icon: "📦" },
   { href: "/dashboard/customers", label: "العملاء", icon: "👥" },
+  { href: "/dashboard/renewals", label: "التجديدات", icon: "🔔" },
+  { href: "/dashboard/templates", label: "القوالب", icon: "💬" },
 ];
 
 export default function DashboardNav({ userEmail }: { userEmail: string }) {

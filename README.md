@@ -386,6 +386,71 @@ network can't reach (same limitation as Phases 3-6), so the UI's
 correctness rests on the database-level test above plus code review
 against the same schema, not on a logged-in screenshot.
 
+## Renewals, reminders, and WhatsApp templates (Phase 8)
+
+The spec is explicit that reminders are never sent automatically —
+there is no WhatsApp Business API integration here, no message ever
+leaves without a human reading it and pressing send inside WhatsApp
+themselves. Everything in this phase is pure link-building:
+
+- **`src/lib/domain/whatsapp.ts`** — `renderTemplate()` substitutes
+  `{{customer_name}}`, `{{product_name}}`, `{{remaining_days}}`,
+  `{{end_date}}`, `{{renewal_url}}`, and `{{store_name}}` tokens into a
+  template body (an unrecognized token is left untouched rather than
+  silently dropped, so a typo in a template is visible instead of
+  hidden); `normalizePhoneForWhatsApp()` handles the `0P`, `+966P`,
+  `00966P`, and bare 9-digit input formats a merchant is likely to have
+  saved a Saudi customer's number in; `buildWhatsAppLink()` produces the
+  `https://wa.me/<digits>?text=<encoded message>` link that opens
+  WhatsApp with the message already typed in.
+- **`/dashboard/templates`** — full CRUD for message templates
+  (name, body, optional `trigger_days` used to auto-pick the closest
+  template for a given subscription, active/inactive toggle, real
+  delete). The baseline schema had `select`/`insert`/`update` RLS
+  policies for `message_templates` but no `delete` policy, so templates
+  could be created and edited but never removed; this phase adds
+  `message_templates_delete` (same `is_org_member` check as the other
+  three).
+- **`/dashboard/renewals`** — the "who needs a reminder today" view:
+  every subscription in the org whose computed status (from the Phase 7
+  status engine) is `expiring_soon`, `expires_today`, `expired`, or
+  `at_risk`, soonest-expiring first. Each row picks the org's active
+  template whose `trigger_days` is closest to how many days are
+  actually left, lets the merchant switch to a different active
+  template if more than one exists, and renders a "فتح واتساب" link
+  that opens the pre-filled message. Clicking it only marks a
+  non-persistent "opened" note in that browser tab — Phase 8
+  deliberately does not add a reminder-sent log table, so no claim is
+  made anywhere that a reminder was actually delivered.
+
+**Verified — real, not assumed:** `renderTemplate`, `buildWhatsAppLink`,
+and `normalizePhoneForWhatsApp` were compiled with `esbuild` and run
+directly under Node against concrete inputs (all four phone formats,
+an unknown-token template, URL-encoding of the message) rather than
+just read for correctness — outputs matched expectations exactly,
+including that an unrecognized `{{token}}` is preserved rather than
+silently removed. The status-engine thresholds (7-day expiring-soon
+window, 3-day at-risk grace period, VIP at 3 renewals) were re-verified
+the same way against fixed dates. The new `message_templates_delete`
+migration was applied to the live database and exercised inside a
+rolled-back transaction: inserting a template into the caller's own
+org succeeds, inserting into an org the caller doesn't belong to is
+rejected by RLS, and deleting a template the caller owns succeeds — row
+counts were 0 across `organizations`/`message_templates` both before
+and after the test, confirming nothing was left behind. The security
+advisor was re-run after applying the migration: no new issues beyond
+the same class of expected `SECURITY DEFINER` warning already present
+for `create_organization` and the Phase 7 RPCs. `next build`,
+`tsc --noEmit`, and `eslint` are all clean, and the new
+`/dashboard/renewals`, `/dashboard/templates`, and
+`/dashboard/templates/new` routes correctly 307-redirect to `/login`
+when unauthenticated (confirmed with curl). **Not verified:** the
+rendered pages through a real signed-in browser session, and whether a
+`wa.me` link built here actually opens WhatsApp with the message
+pre-filled on a real phone — both need either a live Supabase
+connection or an actual WhatsApp client, neither of which this
+sandbox's network can reach (same limitation as every phase since 3).
+
 ## Testing
 
 Not yet added (planned: Phase 12 — unit tests for domain logic, integration
@@ -438,7 +503,16 @@ provisioned.
       confirmed; build/tsc/eslint clean; route protection confirmed by
       curl. Not verified: rendered UI in a real signed-in browser
       session — same sandbox network limitation as Phases 3-6.)
-- [ ] Phase 8 — Renewals, reminders, templates
+- [x] Phase 8 — Renewals, reminders, templates (WhatsApp link-building
+      and template rendering unit-verified with real Node execution;
+      message_templates delete RLS policy added and verified against
+      the live database with a rolled-back transaction, including
+      cross-org isolation; build/tsc/eslint clean; route protection
+      confirmed by curl. No reminder is ever sent automatically — every
+      link requires a human to press send inside WhatsApp. Not
+      verified: rendered UI in a real signed-in browser session, and
+      whether a generated wa.me link actually opens WhatsApp on a real
+      device — same sandbox network limitation as Phases 3-7.)
 - [ ] Phase 9 — Dashboard + analytics
 - [ ] Phase 10 — Admin
 - [ ] Phase 11 — Security hardening
