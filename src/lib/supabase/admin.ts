@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { isPublicSupabaseKey, SERVICE_KEY_HINT } from "./keyShape";
 
 /**
  * Privileged Supabase client using the SERVICE ROLE key.
@@ -22,27 +23,10 @@ export function createAdminClient() {
     );
   }
 
-  // Catches the mistake that actually happened in production twice: a
-  // public key pasted into SUPABASE_SERVICE_ROLE_KEY. The client builds
-  // fine and every request comes back 403 from RLS, so the outbox
-  // silently queued mail and never sent any of it.
-  //
-  // Checked by SHAPE, not just by equality with the anon key. The first
-  // version only compared against NEXT_PUBLIC_SUPABASE_ANON_KEY, and
-  // missed the second attempt because Supabase's newer publishable key
-  // (`sb_publishable_…`) is a different string from the legacy anon JWT
-  // — so the guard passed and the 403s continued.
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const looksPublic =
-    serviceRoleKey === anonKey || serviceRoleKey.startsWith("sb_publishable_");
-
-  if (looksPublic) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY holds a PUBLIC key (publishable/anon). " +
-        "It must be a secret key — Supabase Dashboard > Project Settings > " +
-        "API Keys > Secret keys, which starts with `sb_secret_`. A public key " +
-        "is blocked by RLS, so every privileged query returns 403.",
-    );
+  // Has caught this mistake in production twice. See keyShape.ts for
+  // why it matches on shape and not only on equality with the anon key.
+  if (isPublicSupabaseKey(serviceRoleKey, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)) {
+    throw new Error(SERVICE_KEY_HINT);
   }
 
   return createSupabaseClient(url, serviceRoleKey, {
