@@ -52,6 +52,7 @@ See `.env.example`. Required for any real functionality:
 | `RESEND_API_KEY` | server only | transactional email |
 | `RESEND_FROM_EMAIL` | server only | must be on a verified Resend domain |
 | `NEXT_PUBLIC_APP_URL` | server + email templates | no `localhost` in production |
+| `CRON_SECRET` | server only | bearer token Vercel Cron sends to `/api/cron/email`; the route refuses to run without it |
 
 **Never commit `.env.local`.** It's git-ignored; double-check before pushing.
 
@@ -132,22 +133,107 @@ accounts (User A cannot read/write User B's data) — this needs Phase 3
 (auth) to exist first, and is planned as a mandatory test before Phase 14
 sign-off, per the project's own testing requirements.
 
-## Resend setup
+## Transactional email (Phase 14)
 
-A dedicated sending domain, `mail.j-addid.com`, has been registered in
-Resend (isolated from `auth.trend-box.online`, which belongs to a
-different project, per project-isolation rules) and a sending-only API
-key restricted to it has been created and set as `RESEND_API_KEY` /
-`RESEND_FROM_EMAIL` on the Vercel project.
+### Sending domain
 
-**Status: DNS not yet verified.** Resend returned 4 DNS records
-(a DKIM TXT, an SPF MX + TXT, and a CNAME, all under the `mail.`
-subdomain) that must be added wherever `j-addid.com`'s DNS is managed,
-then confirmed with Resend's domain-verification check. Until that
-verification completes, `RESEND_API_KEY`/`RESEND_FROM_EMAIL` are set but
-sends will fail — this is expected, not a bug. See the project's chat
-history for the exact record values, or re-fetch them from the Resend
-dashboard for the `mail.j-addid.com` domain.
+`mail.j-addid.com` is registered in Resend (isolated from
+`auth.trend-box.online`, which belongs to a different project, per
+project-isolation rules) with a sending-only API key restricted to it.
+**All four DNS records — DKIM TXT, SPF MX, SPF TXT, and the CNAME — are
+verified, and the domain reads `verified` in Resend.** Sending is live.
+
+One thing cost real time here and is worth recording: the CNAME failed
+verification while it was **proxied** through Cloudflare (orange cloud),
+because the lookup returned Cloudflare's IPs instead of the target. It
+verified immediately once the record was switched to **DNS only**.
+
+### Why an outbox, and not "just send it"
+
+Resend was wired up in Phase 12 but **nothing ever called it** —
+`getResendClient()` had zero consumers, so the product sent no mail at
+all. The obvious fix had nowhere to live: this app has **no server
+actions**. Every mutation is a client component calling
+`supabase.rpc(...)` from the browser, so there was no server-side moment
+to hang a send on. Sending from the client would mean either shipping
+the Resend key to the browser (never) or exposing a client-callable
+"send this email" endpoint (a spam relay on a verified domain).
+
+So mail goes through `public.email_outbox`:
+
+* The RPCs that already run inside Postgres (`create_organization`,
+  `admin_review_activation_request`) enqueue a row **in the same
+  transaction as the state change** — no email without a commit, and no
+  commit without the email queued.
+* `dedupe_key` is unique, so a double-clicked wizard or a retried
+  approval cannot send twice.
+* A failed send is retried with backoff (5 → 10 → 20 → 40 min, giving up
+  after 4 attempts) instead of being lost.
+* The table has RLS on with **deliberately no policies** and all grants
+  revoked from `anon`/`authenticated`. Only the service-role key touches
+  it. This is the first real consumer of `SUPABASE_SERVICE_ROLE_KEY`.
+
+### Delivery paths
+
+| Path | Trigger | Auth |
+|---|---|---|
+| `/api/cron/email` | Vercel Cron, daily 06:00 UTC (09:00 Riyadh) | `Authorization: Bearer $CRON_SECRET` |
+| `/api/email/flush` | fire-and-forget after onboarding / activation review | any signed-in session |
+| `/api/email/password-changed` | after `auth.updateUser({password})` | the caller's own session |
+
+`/api/email/flush` is safe to expose to any signed-in user because it
+takes **no recipient, subject or body** — it only sends rows the database
+already decided to enqueue, each marked sent exactly once. Hammering it
+cannot produce one extra email. It exists so an approval lands in the
+inbox in seconds instead of waiting up to 24h for the cron.
+
+`/api/email/password-changed` takes no parameters either: the recipient
+comes from the caller's own session, so it cannot be aimed at anyone
+else.
+
+### The six templates
+
+All in Gulf (Khaleeji) Arabic, RTL, with the logo in the header:
+`welcome`, `activation_submitted`, `activation_approved`,
+`activation_rejected`, `renewal_digest`, `password_changed`.
+
+Implementation notes that are easy to get wrong:
+
+* **Table layout, inline styles only.** Outlook renders through Word;
+  flexbox and grid are dropped silently. A test asserts no
+  `display:flex|grid` survives in any template.
+* **The logo is an absolute URL** (`/brand/jaddid-email-logo.png`, 320px,
+  18 KB, generated with sharp from the 847 KB source). Relative paths
+  have no origin to resolve against in a mail client. A test asserts
+  this.
+* **The logo sits on a forced white plate** (`bgcolor` + `background-color`)
+  because the wordmark is navy and would vanish in a dark-mode client.
+* **Dates use `ar-SA-u-ca-gregory-nu-latn`** ("15 أكتوبر 2026"), not the
+  app's `toLocaleDateString("ar-SA")`. Latin digits render consistently
+  in Outlook where Arabic-Indic digits do not, and an expiry date is the
+  one value that must not be misread. The calendar is pinned to
+  `gregory` so no future ICU default can flip it to Hijri.
+* **Every interpolated value is HTML-escaped** — store and customer names
+  are user-controlled.
+* **Arabic plurals** are handled (`اشتراك واحد` / `اشتراكين` / `3 اشتراكات`),
+  not `1 اشتراكات`.
+
+### Renewal digests go to the merchant, not the end customer
+
+`public.enqueue_renewal_digests(days)` groups expiring subscriptions per
+store and emails **the org owner** a digest — never the end customers,
+who never consented to email from JADDID. The product's customer-facing
+channel stays the WhatsApp templates the merchant sends by hand.
+
+The whole grouping is done in SQL because the owner's address lives in
+`auth.users`, which PostgREST will not expose; doing it from the route
+would mean an admin-API lookup per organisation. The function is
+`SECURITY DEFINER` and executable **only by `service_role`**.
+
+The window is `end_date <= today + 7` with a 30-day tail, so something
+that lapsed last week still gets chased instead of disappearing. The
+dedupe key includes `current_date`, so a store gets at most one digest
+per day no matter how often the cron or a flush runs.
 
 ## Authentication
 

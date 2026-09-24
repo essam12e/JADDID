@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { flushEmailQueue } from "@/lib/email/flushClient";
 import { storeNameSchema, storeUrlSchema } from "@/lib/validations/onboarding";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
@@ -122,6 +123,10 @@ export default function OnboardingWizard({
       setError("تعذّر إنشاء المتجر الآن. حاول مرة أخرى.");
       return;
     }
+
+    // create_organization enqueued the welcome + "request received"
+    // emails; send them now instead of waiting for the daily cron.
+    flushEmailQueue();
 
     const { data: storeRow } = await supabase
       .from("stores")
