@@ -48,10 +48,10 @@ function pluralAr(count: number, one: string, two: string, few: string, many: st
 export function welcomeEmail(params: { name?: string; storeName: string }): RenderedEmail {
   const who = params.name?.trim() ? ` يا ${params.name.trim()}` : "";
   return build("حيّاك الله في جَدِّد 👋", {
-    preheader: `متجر ${params.storeName} جاهز — يلا نبدأ.`,
+    preheader: `«${params.storeName}» جاهز — يلا نبدأ.`,
     heading: `هلا وغلا فيك${who}`,
     paragraphs: [
-      `تم إنشاء متجر «${params.storeName}» بنجاح، ومن الحين وطالع ما عاد عليك هم متابعة تواريخ الاشتراكات.`,
+      `تم إنشاء «${params.storeName}» بنجاح، ومن الحين وطالع ما عاد عليك هم متابعة تواريخ الاشتراكات.`,
       "جَدِّد بيراقب لك كل اشتراك لعملائك، ويبلّغك قبل لا ينتهي بوقت كافي عشان تجدّده وما يروح عليك العميل.",
       "أول خطوة: ضيف منتجاتك، وبعدها سجّل عملاءك — وخلّ الباقي علينا.",
     ],
@@ -164,7 +164,7 @@ export function renewalDigestEmail(params: {
   }));
 
   const paragraphs = [
-    `عندك ${countPhrase} في متجر «${params.storeName}» محتاج تتابعه.`,
+    `عندك ${countPhrase} في «${params.storeName}» محتاج تتابعه.`,
   ];
   if (expired > 0) {
     paragraphs.push(
@@ -180,7 +180,7 @@ export function renewalDigestEmail(params: {
   return build(
     expired > 0 ? `⚠️ عندك اشتراكات منتهية في ${params.storeName}` : `تذكير: ${countPhrase} قرب ينتهي`,
     {
-      preheader: `${countPhrase} في متجر ${params.storeName} يبي له متابعة.`,
+      preheader: `${countPhrase} في «${params.storeName}» يبي له متابعة.`,
       heading: "اشتراكات تبي متابعة",
       paragraphs,
       info,
