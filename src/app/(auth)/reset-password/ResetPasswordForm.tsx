@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
+import { checkPasswordPwned, pwnedMessage } from "@/lib/security/pwned";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
@@ -34,6 +35,15 @@ export default function ResetPasswordForm() {
 
   async function onSubmit(values: ResetPasswordInput) {
     setServerError(null);
+    // Refuse passwords that already appear in public breach corpora.
+    // Runs before the network call so a known-leaked password is never
+    // even sent to Supabase; fails open if HIBP is unreachable.
+    const breach = pwnedMessage(await checkPasswordPwned(values.password));
+    if (breach) {
+      setServerError(breach);
+      return;
+    }
+
     const supabase = createClient();
     const { error } = await supabase.auth.updateUser({
       password: values.password,
