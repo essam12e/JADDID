@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { flushEmailQueue } from "@/lib/email/flushClient";
 
 export default function ReviewActions({ requestId }: { requestId: string }) {
   const router = useRouter();
@@ -25,6 +26,9 @@ export default function ReviewActions({ requestId }: { requestId: string }) {
       setError(rpcError.message || "تعذّر تنفيذ الإجراء.");
       return;
     }
+    // The RPC enqueued the outcome email inside the same transaction;
+    // this just asks the server to send it now rather than at 06:00 UTC.
+    flushEmailQueue();
     router.refresh();
   }
 

@@ -28,6 +28,9 @@ export default function SecurityForm() {
       setServerError("تعذّر تحديث كلمة المرور.");
       return;
     }
+    // Security notice, sent from the server using this session's own
+    // address. Fire-and-forget: the password change already succeeded.
+    void fetch("/api/email/password-changed", { method: "POST", keepalive: true }).catch(() => {});
     setSuccess(true);
     reset();
   }
