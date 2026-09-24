@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
-import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
 import { checkPasswordPwned, pwnedMessage } from "@/lib/security/pwned";
@@ -30,20 +29,17 @@ export default function SignupForm() {
       return;
     }
 
-    const supabase = createClient();
+    // Goes through our own route rather than supabase.auth.signUp(),
+    // because that call makes Supabase send its dashboard-only English
+    // confirmation template. The route mints the same link server-side
+    // and sends JADDID's Arabic, branded message instead.
+    const response = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    }).catch(() => null);
 
-    const { error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        data: { full_name: values.fullName },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      // Generic message at the app layer to reduce user-enumeration signal,
-      // even though the underlying Supabase error may be more specific.
+    if (!response?.ok) {
       setServerError(
         "تعذّر إنشاء الحساب. تأكد من صحة البيانات أو حاول تسجيل الدخول إذا كان لديك حساب بالفعل.",
       );

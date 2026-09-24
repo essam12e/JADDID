@@ -8,6 +8,8 @@ import {
   activationRejectedEmail,
   renewalDigestEmail,
   passwordChangedEmail,
+  confirmSignupEmail,
+  resetPasswordEmail,
   type RenderedEmail,
   type ExpiringItem,
 } from "./templates";
@@ -41,6 +43,18 @@ export function renderTemplate(template: string, payload: Payload): RenderedEmai
       });
     case "password_changed":
       return passwordChangedEmail({ name: strOrNull(payload.name) });
+    case "confirm_signup":
+      return confirmSignupEmail({
+        name: strOrNull(payload.name),
+        actionLink: str(payload.actionLink),
+        code: strOrNull(payload.code),
+      });
+    case "reset_password":
+      return resetPasswordEmail({
+        name: strOrNull(payload.name),
+        actionLink: str(payload.actionLink),
+        code: strOrNull(payload.code),
+      });
     default:
       return null;
   }

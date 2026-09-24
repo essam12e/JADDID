@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  confirmSignupEmail,
+  resetPasswordEmail,
   welcomeEmail,
   activationSubmittedEmail,
   activationApprovedEmail,
@@ -22,6 +24,8 @@ const ALL = [
     items: [{ customerName: "أحمد", productName: "Netflix", endDate: "2026-10-01", daysLeft: 5 }],
   }),
   passwordChangedEmail({ name: "عصام" }),
+  confirmSignupEmail({ name: "عصام", actionLink: "https://j-addid.com/auth/callback?code=x", code: "482915" }),
+  resetPasswordEmail({ name: "عصام", actionLink: "https://j-addid.com/auth/callback?code=y", code: "731204" }),
 ];
 
 describe("email shell", () => {
@@ -173,6 +177,8 @@ describe("template registry", () => {
         "password_changed",
         "renewal_digest",
         "welcome",
+        "confirm_signup",
+        "reset_password",
       ].sort(),
     );
   });
@@ -217,5 +223,42 @@ describe("store-name phrasing", () => {
       expect(email.html).not.toContain("متجر متجر");
       expect(email.text).not.toContain("متجر متجر");
     }
+  });
+});
+
+
+describe("auth emails the app sends instead of Supabase", () => {
+  // These exist because Supabase's own confirmation and recovery
+  // templates live only in its dashboard — unreachable from the repo —
+  // so merchants were getting a stock English message.
+  it("are Arabic and carry the brand, unlike the stock template", () => {
+    for (const email of [
+      confirmSignupEmail({ actionLink: "https://x.test/a" }),
+      resetPasswordEmail({ actionLink: "https://x.test/b" }),
+    ]) {
+      expect(email.html).toContain('dir="rtl"');
+      expect(email.html).toContain("jaddid-email-logo.png");
+      expect(email.subject).toMatch(/[\u0600-\u06FF]/); // Arabic subject
+      expect(email.html).not.toContain("Confirm your email address");
+      expect(email.html).not.toContain("Reset your password");
+    }
+  });
+
+  it("put the generated link on the button", () => {
+    const link = "https://j-addid.com/auth/callback?code=abc123";
+    expect(confirmSignupEmail({ actionLink: link }).html).toContain(link);
+    expect(resetPasswordEmail({ actionLink: link }).html).toContain(link);
+  });
+
+  it("show the one-time code when there is one", () => {
+    // A link is single-use and cannot cross devices; the code can do both.
+    const withCode = confirmSignupEmail({ actionLink: "https://x.test/a", code: "482915" });
+    expect(withCode.html).toContain("482915");
+    expect(withCode.html).toContain("أو استخدم هذا الرمز");
+  });
+
+  it("omit the code row entirely when none was issued", () => {
+    const without = confirmSignupEmail({ actionLink: "https://x.test/a", code: null });
+    expect(without.html).not.toContain("أو استخدم هذا الرمز");
   });
 });
