@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin/requireAdmin";
+import MailHealth from "@/components/admin/MailHealth";
 
 const STATUS_LABELS: Record<string, string> = {
   pending_activation: "بانتظار التفعيل",
@@ -50,6 +51,8 @@ export default async function AdminOverviewPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
       <h1 className="mb-6 text-xl font-bold text-[var(--jaddid-navy)]">نظرة عامة على المنصة</h1>
+
+      <MailHealth />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-[var(--jaddid-border)] bg-white p-4">
