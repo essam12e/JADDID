@@ -23,6 +23,12 @@ describe("translateDbError", () => {
     expect(out).toContain("(—)");
   });
 
+  it("reads a double-clicked approval as already-done, not as a failure", () => {
+    const out = translateDbError("JADDID_ALREADY_REVIEWED");
+    expect(out).toContain("تمت مراجعته");
+    expect(out).not.toContain("خطأ");
+  });
+
   it("never leaks a raw SQL message", () => {
     const sql = 'duplicate key value violates unique constraint "customers_pkey"';
     expect(translateDbError(sql)).toBe(FALLBACK_ERROR);
