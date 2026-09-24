@@ -50,10 +50,11 @@ describe("checkPasswordPwned", () => {
   it("sends only the 5-character prefix, never the password", async () => {
     // Typed params so `mock.calls[0][0]` is a known element, not a
     // zero-length tuple.
-    const fetchSpy = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) =>
-        new Response("1E4C9B93F3F0682250B6CF8331B7EE68FD8:37359195"),
-    );
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      void url;
+      void init;
+      return new Response("1E4C9B93F3F0682250B6CF8331B7EE68FD8:37359195");
+    });
 
     const result = await checkPasswordPwned("password", fetchSpy as unknown as typeof fetch);
 
