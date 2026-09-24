@@ -287,7 +287,7 @@ export default function OrbitMotif({
             style={{ width: "46%", aspectRatio: "1 / 1" }}
           >
             <Image
-              src="/brand/jaddid-logo-transparent.png"
+              src="/brand/jaddid-logo-256.png"
               alt="جَدِّد | JADDID"
               fill
               priority

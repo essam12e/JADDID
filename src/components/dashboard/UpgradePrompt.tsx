@@ -1,21 +1,19 @@
 import Link from "next/link";
 
 /**
- * Friendly "you've hit a plan limit" UX pattern.
+ * Friendly "you've hit a plan limit" UX.
  *
- * IMPORTANT — this component is a UI building block only. As of this pass,
- * nothing in the dashboard actually calls it: there is no backend check
- * anywhere that compares a store's live customer/store counts against
- * `plans.active_customer_limit` / `plans.stores_limit` and blocks the
- * action. That real enforcement (a server-side check before insert, most
- * naturally in the import/customer-creation and store-creation actions)
- * was deliberately deferred to a follow-up phase rather than invented here.
+ * The limits this talks about are now real and enforced in the database
+ * (Phase 15): `private.enforce_store_limit` / `enforce_user_limit`
+ * triggers, and an active-customer check inside `register_sale`. They
+ * raise `JADDID_LIMIT_*` codes, which `translateDbError` turns into the
+ * Arabic sentence a form shows inline.
  *
- * When that enforcement is built, the blocked action's handler should
- * catch the limit and render this component instead of a raw error, so the
- * user sees a next step ("upgrade to Pro") instead of a dead-end failure.
+ * Use this component where a whole screen can offer the upgrade path
+ * (rather than a single field's error line), e.g. an empty state or a
+ * blocked action page.
  *
- * Usage once wired up:
+ * Usage:
  *   <UpgradePrompt
  *     limitLabel="عدد العملاء النشطين"
  *     currentPlanName="جَدِّد — البداية"

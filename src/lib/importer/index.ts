@@ -1,19 +1,25 @@
 import "server-only";
 import { assertSafeImportUrl } from "./ssrf";
 import { ShopifyAdapter } from "./adapters/shopify";
-import { JsonLdAdapter } from "./adapters/jsonld";
+import { StorefrontAdapter } from "./adapters/storefront";
 import type { ExtractedProduct, StoreImporter } from "./types";
 
 export type { ExtractedProduct } from "./types";
 
-// Order matters: Shopify's /products.json is a real structured endpoint,
-// tried first since it's cheap and unambiguous when it applies. JSON-LD
-// is the general-purpose fallback for everything else that publishes
-// schema.org Product data. Adding a new platform means adding a new
-// adapter here -- nothing else in the app needs to change (per the
-// project's requirement that the importer be extensible without a
-// rewrite).
-const ADAPTERS: StoreImporter[] = [new ShopifyAdapter(), new JsonLdAdapter()];
+/**
+ * Order matters.
+ *
+ * Shopify's /products.json is a real, complete, unambiguous feed, so it
+ * goes first whenever it applies. Everything else — Salla, Zid,
+ * WooCommerce, Magento, a hand-rolled storefront — is handled by the
+ * general adapter, which reads JSON-LD, microdata and Open Graph, and
+ * will go find the product pages itself when handed a homepage.
+ *
+ * The previous chain was Shopify + a JSON-LD-only reader of a single
+ * page, which is why pasting the homepage of an ordinary Salla or Zid
+ * store answered "this doesn't look like a store".
+ */
+const ADAPTERS: StoreImporter[] = [new ShopifyAdapter(), new StorefrontAdapter()];
 
 export type ImportOutcome = {
   ok: boolean;

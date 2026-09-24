@@ -1,18 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { getPublicPlans, type PublicPlan } from "@/lib/plans";
 import Reveal from "./Reveal";
 import SectionHeading from "./SectionHeading";
 
-type Plan = {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  currency: string;
-  billing_period: string;
-  active_customer_limit: number | null;
-  stores_limit: number | null;
-  features: Record<string, boolean>;
-};
+type Plan = PublicPlan;
 
 const FEATURE_LABELS: Record<string, string> = {
   imports: "استيراد المنتجات",
@@ -24,9 +14,10 @@ const FEATURE_LABELS: Record<string, string> = {
 
 
 /**
- * Reads live plan data from the plans table (RLS allows anon SELECT of
- * active plans) rather than hard-coding the price here and risking it
- * drift from what admins configure in the database.
+ * Reads live plan data rather than hard-coding prices that would drift
+ * from what admins configure. Fetched through the cached, session-free
+ * helper so this section does not force the whole page to be
+ * server-rendered per visitor.
  */
 export default async function Pricing({
   standalone = false,
@@ -37,26 +28,7 @@ export default async function Pricing({
    * above it to make visual sense. */
   standalone?: boolean;
 } = {}) {
-  const supabase = await createClient();
-  // A hard timeout on this query: without it, a slow or unreachable
-  // database would block the entire homepage's server render indefinitely
-  // (this section is the only one on the page that depends on a live
-  // network call). Timing out falls back to the same friendly message as
-  // any other fetch failure below, rather than hanging the page.
-  const { data: plans, error: plansError } = await supabase
-    .from("plans")
-    .select(
-      "id, slug, name, price, currency, billing_period, active_customer_limit, stores_limit, features",
-    )
-    .eq("is_active", true)
-    .order("price", { ascending: true })
-    .abortSignal(AbortSignal.timeout(6000));
-
-  if (plansError) {
-    console.error("[Pricing] failed to load plans:", plansError);
-  }
-
-  const list = (plans ?? []) as Plan[];
+  const list: Plan[] = await getPublicPlans();
 
   return (
     <section

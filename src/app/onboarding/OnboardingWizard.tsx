@@ -198,7 +198,7 @@ export default function OnboardingWizard({
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center">
           <Image
-            src="/brand/jaddid-logo.png"
+            src="/brand/jaddid-logo-256.png"
             alt="جَدِّد"
             width={44}
             height={44}
