@@ -300,6 +300,78 @@ and dates. That page links to sign-out rather than account settings —
 settings sit behind the same gate, so linking there would bounce the user
 straight back.
 
+## Auth emails are sent by the app, not Supabase
+
+Supabase Auth mails signup-confirmation and password-recovery from
+templates that live **only in its dashboard** — no migration, and no API
+this project holds, can reach them. Relying on them meant Arabic-speaking
+merchants receiving the stock English *"Confirm your email address"*
+forever, and a manual paste step nobody was going to remember.
+
+So the app stopped asking Supabase to send them.
+`auth.admin.generateLink()` mints the confirmation / recovery link **and
+its one-time code without mailing anything**, and `src/lib/auth/mailLinks.ts`
+queues JADDID's own Arabic message through the same Resend outbox as
+every other email in the product.
+
+| Replaced | With |
+|---|---|
+| `supabase.auth.signUp()` | `POST /api/auth/signup` |
+| `supabase.auth.resetPasswordForEmail()` | `POST /api/auth/reset-password` |
+
+Both answer identically whether or not the address has an account —
+`generateLink` failing with "user already registered" or "user not found"
+stays silent — so neither screen can be used to enumerate registered
+emails. Both are rate-limited per address by counting recent
+`email_outbox` rows, which needs no extra table and no in-memory state a
+serverless instance would lose. `safeOrigin()` pins `redirectTo` to
+`NEXT_PUBLIC_APP_URL` so a caller cannot turn either route into an open
+redirect.
+
+Each message carries the one-time code as well as the link, because a
+link is single-use (mail scanners open it before the human does, so the
+human's click is frequently the second one) and cannot cross devices
+(PKCE keeps the `code_verifier` in the browser that started the flow).
+`/verify-email` already calls `verifyOtp`.
+
+`supabase/templates/` still holds all three as Arabic HTML for any flow
+that does not go through these routes.
+
+## The wrong-key incident, and what it changed
+
+Worth recording, because the failure mode was invisible rather than
+loud. The outbox queued four real emails and sent **none** of them for
+hours. Supabase's edge logs had the answer:
+
+```
+GET /rest/v1/email_outbox?status=eq.pending  ->  403
+```
+
+**403, not 401.** The key was valid; the role simply had no permission —
+which is exactly what the publishable (anon) key looks like against a
+table whose RLS has no policies. `SUPABASE_SERVICE_ROLE_KEY` held the
+publishable key.
+
+Three things conspired to hide it:
+
+* the flush is fire-and-forget, so no browser ever saw the error
+* rows sat at `attempts = 0`, so nothing looked *tried and failed*
+* **no screen in the product showed the queue at all**
+
+And the only check in the code was "is the variable non-empty?" — which
+it was.
+
+Now: `createAdminClient()` throws by name if the key equals the anon key,
+`checkAdminAccess()` proves the key has service-role power by reading a
+table RLS denies to every other role, and `/admin` shows a mail-health
+strip with the pending count, failed count and last error.
+
+**Operational note:** Vercel binds environment variables at deployment
+creation. Editing a variable does nothing to a deployment that already
+exists — a redeploy *after* the edit is what picks it up. Checking the
+deployment's `created` timestamp against the variable's `updatedAt` is
+the fastest way to tell whether a fix is actually live.
+
 ## Leaked-password protection (without the paid plan)
 
 Supabase's own leaked-password protection is a Pro-plan feature, and this
