@@ -202,3 +202,20 @@ describe("SQL ↔ TypeScript template names", () => {
     }
   });
 });
+
+describe("store-name phrasing", () => {
+  it("never doubles the word متجر when the name already starts with it", () => {
+    // Merchants really do name stores "متجر النور", and a hardcoded
+    // "متجر ${storeName}" prefix rendered "متجر متجر النور" in the inbox
+    // preview line.
+    const welcome = welcomeEmail({ storeName: "متجر النور" });
+    const digest = renewalDigestEmail({
+      storeName: "متجر النور",
+      items: [{ customerName: "أ", productName: "ب", endDate: "2026-10-01", daysLeft: 3 }],
+    });
+    for (const email of [welcome, digest]) {
+      expect(email.html).not.toContain("متجر متجر");
+      expect(email.text).not.toContain("متجر متجر");
+    }
+  });
+});
