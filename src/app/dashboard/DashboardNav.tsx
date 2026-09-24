@@ -35,7 +35,7 @@ export default function DashboardNav({
       <div className="flex items-center justify-between border-b border-[var(--jaddid-border)] bg-white px-4 py-3 sm:hidden">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image
-            src="/brand/jaddid-logo.png"
+            src="/brand/jaddid-logo-256.png"
             alt="جَدِّد"
             width={28}
             height={28}
@@ -113,7 +113,7 @@ export default function DashboardNav({
         <div className="flex items-center justify-between border-b border-[var(--jaddid-border)] px-5 py-4">
           <Link href="/dashboard" className="flex items-center gap-2">
             <Image
-              src="/brand/jaddid-logo.png"
+              src="/brand/jaddid-logo-256.png"
               alt="جَدِّد"
               width={32}
               height={32}

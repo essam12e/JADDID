@@ -35,7 +35,7 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-2">
               <Image
-                src="/brand/jaddid-icon-transparent.png"
+                src="/brand/jaddid-icon-128.png"
                 alt="جَدِّد | JADDID"
                 width={32}
                 height={32}

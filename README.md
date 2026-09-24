@@ -235,6 +235,99 @@ that lapsed last week still gets chased instead of disappearing. The
 dedupe key includes `current_date`, so a store gets at most one digest
 per day no matter how often the cron or a flush runs.
 
+## Subscriptions, plans and access gates (Phase 15)
+
+### What was actually broken
+
+`plans.active_customer_limit`, `stores_limit` and `users_limit` were shown
+on the pricing page and in the dashboard, and **nothing enforced any of
+them**. `account_subscriptions.expires_at` was a column that no code path
+ever wrote, so no subscription could end. A merchant could sign up, never
+be approved, and still use the whole product.
+
+All three gates now live in the database, because every mutation in this
+app is a browser calling PostgREST directly — a check in React is a
+suggestion, not a limit.
+
+| Gate | Where | Raised as |
+|---|---|---|
+| Account approved by an admin | `private.require_active_org` | `JADDID_NOT_ACTIVATED` |
+| Subscription not expired | `private.require_active_org` | `JADDID_SUBSCRIPTION_EXPIRED` |
+| Store count | `BEFORE INSERT` trigger on `stores` | `JADDID_LIMIT_STORES:<n>` |
+| Team size | `BEFORE INSERT` trigger on `organization_members` | `JADDID_LIMIT_USERS:<n>` |
+| Active customers | inside `register_sale` | `JADDID_LIMIT_CUSTOMERS:<n>` |
+
+Store and user limits are **triggers, not RPC checks**: `stores` is still
+insertable straight over PostgREST, so a limit that lived only in an RPC
+would be one `fetch()` away from being bypassed.
+
+The customer ceiling is only consulted when a sale would actually consume
+a new slot — an existing active customer buying a second product is never
+blocked by a limit they are already counted in. "Active customer" means
+one with at least one live, unexpired subscription, so archived and lapsed
+customers free the slot up, which is what a merchant expects the number on
+the pricing page to mean.
+
+Codes are deliberately machine-readable. `src/lib/errors.ts` maps them to
+Arabic the merchant can act on; a raw Postgres message never reaches the
+screen, and "something went wrong" is useless when the real cause is a
+limit they can fix by archiving a customer.
+
+### Approval is what starts the clock
+
+`admin_review_activation_request` now takes `p_plan_id` and
+`p_duration_months`. Approving writes `plan_id`, `started_at` and
+`expires_at` — it is the only place in the product where a subscription's
+dates are set. The admin picks both in the approve form; the confirm step
+states the plan and the exact expiry date before anything happens.
+
+The old 3-argument version is **dropped**, not left alongside: with
+defaults on the new parameters, keeping both would make a 3-argument call
+ambiguous and PostgreSQL would reject it at runtime.
+
+### Where users are stopped
+
+`src/lib/supabase/middleware.ts` refuses any protected route to a session
+whose `email_confirmed_at` is null. Supabase normally withholds the
+session until confirmation, but that is a project setting someone can turn
+off; the claim on the session is the fact. It costs nothing — `user` is
+already loaded there for the cookie refresh.
+
+`src/app/dashboard/layout.tsx` then refuses anything but an approved,
+unexpired account and sends it to `/pending-activation`, which explains
+the actual state (pending / rejected / suspended / expired) with the plan
+and dates. That page links to sign-out rather than account settings —
+settings sit behind the same gate, so linking there would bounce the user
+straight back.
+
+## Performance
+
+Measured changes, not guesses:
+
+* **The landing page is static again.** The pricing section read plans
+  through the cookie-bound server client; touching cookies opts a route
+  out of static rendering, so the marketing homepage was server-rendered
+  per visitor and each one waited on a Supabase round trip for three rows
+  that change twice a year. `src/lib/plans.ts` fetches them with the
+  publishable key and Next's data cache (5-minute revalidate). `/`,
+  `/about` and `/pricing` now build as `○ (Static)`.
+* **Middleware no longer calls Supabase Auth on public pages.**
+  `supabase.auth.getUser()` is a network call, and it ran on *every*
+  request — including the homepage, whose content never depends on who is
+  asking. `PUBLIC_PATHS` short-circuits it. Protected routes still refresh
+  the session exactly as before.
+* **Six dashboard round trips became one.** The layout made four
+  sequential PostgREST calls (role, membership, stores, plan) and the page
+  repeated two of them. Both now read one `my_account_overview()` RPC,
+  memoised for the request with React `cache()` in
+  `src/lib/account.server.ts`.
+* **`public/` went from 5.6 MB to 220 KB.** A 3.7 MB logo-reveal video
+  that nothing referenced was removed, and the 773–847 KB brand PNGs were
+  replaced by a 12 KB 256px logo, a 6 KB 128px icon and a proper
+  1200×630 social image. The old sources were being handed to the image
+  optimizer to render 32–64 px chrome, and the 847 KB one was `priority`
+  on the landing page.
+
 ## Authentication
 
 Built: signup, login, email verification (both the OTP-code screen and a
@@ -331,14 +424,58 @@ normal internet access) or on a machine with an unrestricted network.
 ## Store importer (Phase 5)
 
 Architecture: `src/lib/importer/` — a `StoreImporter` interface
-(`types.ts`), one adapter per source (`adapters/shopify.ts` uses
-Shopify's public `/products.json` endpoint; `adapters/jsonld.ts` reads
-schema.org `Product` structured data most storefronts already publish
-for SEO), and an orchestrator (`index.ts`) that tries each adapter in
-order and returns which one worked or exactly why every one failed.
-Adding a new platform means writing one more adapter class — nothing
-else changes, per the project's requirement that this not need a
-rewrite later.
+(`types.ts`), adapters, and an orchestrator (`index.ts`) that tries each
+in order and reports which one worked or exactly why every one failed.
+
+### Rewritten in Phase 15: it works on any normal store
+
+The original chain was Shopify's `/products.json` plus a JSON-LD reader
+of **one page**, which produced this on an ordinary Salla or Zid store:
+
+> تعذّر استيراد أي منتجات من هذا الرابط. لم يتم العثور على بيانات
+> Shopify — لا يبدو أن هذا متجر.
+
+Two real bugs sat behind that message:
+
+1. **It read only the page it was given.** Merchants paste their
+   *homepage*, and a homepage publishes `Organization`/`WebSite`
+   structured data — never `Product`. The products are on other pages.
+2. **It read only JSON-LD.** Plenty of storefronts publish Open Graph or
+   microdata instead, which is just as machine-readable.
+
+Both are fixed:
+
+* `extract.ts` reads **JSON-LD, then microdata, then Open Graph**, and
+  unwraps `ItemList` (how category pages publish their products). The
+  Open Graph path refuses to fire on `og:type=website`, so a shop's front
+  page can never import as one product named after the shop.
+* `adapters/storefront.ts` goes and **finds the product pages** when the
+  given URL has none: WooCommerce's public Store API first (real prices,
+  no scraping), then `sitemap.xml` (following one level of sitemap index,
+  preferring product-shaped children), then the page's own same-origin
+  links. It opens at most 12 product pages, 4 at a time.
+* `discover.ts` knows the URL shapes these platforms use — Salla's
+  `/p123456789`, Zid's and Shopify's `/products/{slug}`, WooCommerce's
+  `/product/{slug}` — and excludes the paths that merely look similar
+  (`/cart`, `/collections`, `/categories`, `/account/login`).
+* Platform detection works on **custom domains**, not just
+  `*.salla.sa` / `*.zid.store`, by looking for their CDN hosts in the
+  markup — a merchant's own domain is the normal case, and the hostname
+  tells you nothing.
+* Prices are parsed from what storefronts actually print: `"1,299.00 ر.س"`,
+  `"SAR 49"`, Arabic-Indic `"١٢٩"` and Eastern Arabic-Indic `"۱۲۹"`.
+  Anything unparseable becomes `null` rather than a guess — a wrong price
+  imported silently is far more damaging than a blank one.
+
+Failure messages now say what to do ("جرّب رابط قسم أو منتج بدل الصفحة
+الرئيسية") and name the platform when it was recognised, instead of
+claiming the site is not a store.
+
+`adapters/jsonld.ts` was deleted: `extract.ts` supersedes it, and leaving
+a second JSON-LD path around would have meant two places to fix.
+
+Adding a new platform still means writing one more adapter class —
+nothing else changes.
 
 **SSRF protection** (`ssrf.ts`) is the part of this feature that matters
 most, since it accepts a URL from the user and fetches it server-side.

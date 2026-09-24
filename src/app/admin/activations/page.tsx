@@ -16,13 +16,25 @@ const STATUS_STYLES: Record<string, string> = {
 export default async function AdminActivationsPage() {
   const { supabase } = await requireAdmin();
 
-  const { data: requests } = await supabase
-    .from("activation_requests")
-    .select(
-      "id, status, note, created_at, reviewed_at, organizations(name, account_number), account_subscriptions(plans(name, price, currency))",
-    )
-    .order("created_at", { ascending: false })
-    .limit(50);
+  // Both in one trip: the requests, and the plan catalogue the approve
+  // form needs. Approving is what writes started_at/expires_at, so the
+  // admin has to pick a plan and a duration at that moment.
+  const [{ data: requests }, { data: planRows }] = await Promise.all([
+    supabase
+      .from("activation_requests")
+      .select(
+        "id, status, note, created_at, reviewed_at, organizations(name, account_number), account_subscriptions(plan_id, plans(name, price, currency))",
+      )
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("plans")
+      .select("id, name, price, currency")
+      .eq("is_active", true)
+      .order("price", { ascending: true }),
+  ]);
+
+  const plans = planRows ?? [];
 
   const pending = (requests ?? []).filter((r) => r.status === "pending");
   const resolved = (requests ?? []).filter((r) => r.status !== "pending");
@@ -66,7 +78,11 @@ export default async function AdminActivationsPage() {
                   </span>
                 </div>
                 <div className="mt-3">
-                  <ReviewActions requestId={r.id} />
+                  <ReviewActions
+                    requestId={r.id}
+                    plans={plans}
+                    currentPlanId={sub?.plan_id ?? null}
+                  />
                 </div>
               </div>
             );

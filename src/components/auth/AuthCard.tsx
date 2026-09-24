@@ -22,7 +22,7 @@ export default function AuthCard({
         <div className="mb-6 flex flex-col items-center">
           <Link href="/" className="mb-3">
             <Image
-              src="/brand/jaddid-logo.png"
+              src="/brand/jaddid-logo-256.png"
               alt="جَدِّد | JADDID"
               width={48}
               height={48}

@@ -1,0 +1,98 @@
+import "server-only";
+import { safeFetch } from "./ssrf";
+
+export const MAX_HTML_BYTES = 3_000_000;
+
+/**
+ * Every adapter needs the same thing: fetch a URL through the SSRF guard,
+ * refuse anything oversized, hand back text. Having it in one place means
+ * the size cap and the browser-ish Accept header can't drift between
+ * adapters — several storefronts (Salla and Zid among them) serve a
+ * stripped page or a 403 to a client that doesn't look like a browser.
+ */
+export async function fetchText(
+  url: string | URL,
+  accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+): Promise<{ ok: true; text: string; finalUrl: string } | { ok: false; reason: string }> {
+  let response: Response;
+  try {
+    response = await safeFetch(url.toString(), {
+      headers: {
+        Accept: accept,
+        // Not deception — an honest identifier that still reads as a real
+        // client. A bare fetch() UA gets bot-walled by most storefronts.
+        "User-Agent": "Mozilla/5.0 (compatible; JaddidImporter/1.0; +https://j-addid.com)",
+        "Accept-Language": "ar,en;q=0.8",
+      },
+    });
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : "فشل الاتصال" };
+  }
+
+  if (!response.ok) {
+    return { ok: false, reason: `تعذّر تحميل الصفحة (HTTP ${response.status}).` };
+  }
+
+  const declared = Number(response.headers.get("content-length") ?? 0);
+  if (declared > MAX_HTML_BYTES) {
+    return { ok: false, reason: "الصفحة كبيرة جدًا لمعالجتها." };
+  }
+
+  const text = await response.text();
+  if (text.length > MAX_HTML_BYTES) {
+    return { ok: false, reason: "الصفحة كبيرة جدًا لمعالجتها." };
+  }
+
+  return { ok: true, text, finalUrl: response.url || url.toString() };
+}
+
+export async function fetchJson<T>(
+  url: string | URL,
+): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
+  const result = await fetchText(url, "application/json");
+  if (!result.ok) return result;
+  try {
+    return { ok: true, data: JSON.parse(result.text) as T };
+  } catch {
+    return { ok: false, reason: "الرد ليس JSON صالحًا." };
+  }
+}
+
+/** Decodes the handful of HTML entities that actually show up in titles. */
+export function decodeEntities(input: string): string {
+  return input
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&amp;/g, "&");
+}
+
+export function stripTags(input: string): string {
+  return decodeEntities(input.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Prices arrive as "1,299.00 ر.س", "١٢٩٩", "SAR 1299" and worse.
+ * Returns null rather than a wrong number — a wrong price silently
+ * imported is far more damaging than a blank one the merchant fills in.
+ */
+export function parsePrice(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+
+  // Arabic-Indic and Eastern Arabic-Indic digits to ASCII.
+  const normalised = String(raw)
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[,٬\s]/g, "")
+    .replace(/٫/g, ".");
+
+  const match = normalised.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0]);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}

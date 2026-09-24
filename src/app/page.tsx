@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import Navbar from "@/components/landing/Navbar";
+import AuthNotice from "@/components/landing/AuthNotice";
 import Hero from "@/components/landing/Hero";
 import Marquee from "@/components/landing/Marquee";
 import ProblemSection from "@/components/landing/ProblemSection";
@@ -12,6 +14,11 @@ import Footer from "@/components/landing/Footer";
 export default function Home() {
   return (
     <>
+      {/* Suspense keeps useSearchParams from opting this page out of
+          static rendering. */}
+      <Suspense fallback={null}>
+        <AuthNotice />
+      </Suspense>
       <Navbar />
       <main className="flex-1">
         <Hero />

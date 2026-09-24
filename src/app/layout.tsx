@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     description,
     images: [
       {
-        url: "/brand/jaddid-logo.png",
+        url: "/brand/jaddid-og.png",
         width: 1254,
         height: 1254,
         alt: "جَدِّد | JADDID",
@@ -43,11 +43,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: ["/brand/jaddid-logo.png"],
+    images: ["/brand/jaddid-og.png"],
   },
   icons: {
-    icon: "/brand/jaddid-icon-transparent.png",
-    apple: "/brand/jaddid-icon-transparent.png",
+    icon: "/brand/jaddid-icon-128.png",
+    apple: "/brand/jaddid-icon-128.png",
   },
 };
 

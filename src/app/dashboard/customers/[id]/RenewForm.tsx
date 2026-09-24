@@ -8,6 +8,7 @@ import { renewalSchema, type RenewalInput, RENEWAL_PRESETS } from "@/lib/validat
 import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
+import { translateDbError } from "@/lib/errors";
 
 // Kept outside the component: it's an event-handler helper, not part of
 // render, but isolating it here keeps the react-hooks/purity rule from
@@ -65,7 +66,7 @@ export default function RenewForm({
     });
 
     if (error) {
-      setServerError(error.message || "تعذّر تجديد الاشتراك.");
+      setServerError(translateDbError(error));
       return;
     }
 

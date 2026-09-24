@@ -11,6 +11,8 @@ import {
 import { computeDashboardStats, computeMonthlyRevenue } from "@/lib/domain/analytics";
 import RevenueChart from "@/components/dashboard/RevenueChart";
 import StatusBreakdown from "@/components/dashboard/StatusBreakdown";
+import SubscriptionCard from "@/components/dashboard/SubscriptionCard";
+import { getAccountOverviewCached } from "@/lib/account.server";
 
 const ACTIONABLE_STATUSES: SubscriptionStatusValue[] = [
   "at_risk",
@@ -27,24 +29,17 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", user.id)
-    .single();
+  // Reuses the overview the layout already fetched this request (React
+  // `cache`), so the greeting, org name, plan and limits cost nothing
+  // extra — this page used to make its own `profiles` and
+  // `organization_members` calls for the same facts.
+  const account = await getAccountOverviewCached();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id, organizations(name)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) {
+  if (!account.hasOrganization) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-12">
         <h1 className="text-2xl font-bold text-[var(--jaddid-navy)]">
-          مرحبًا{profile?.full_name ? `، ${profile.full_name}` : ""} 👋
+          مرحبًا{account.fullName ? `، ${account.fullName}` : ""} 👋
         </h1>
         <p className="mt-4 rounded-2xl border border-dashed border-[var(--jaddid-border)] bg-white p-6 text-sm text-slate-500">
           لا يوجد متجر بعد. أكمل خطوات الإعداد لإضافة متجرك الأول.
@@ -60,8 +55,8 @@ export default async function DashboardPage() {
     );
   }
 
-  const orgId = membership.organization_id;
-  const orgName = (membership.organizations as unknown as { name: string } | null)?.name;
+  const orgId = account.organizationId!;
+  const orgName = account.organizationName;
 
   const [{ count: customerCount }, { data: customers }, { data: subscriptions }, { data: renewals }, { data: recentLogs }] =
     await Promise.all([
@@ -142,9 +137,13 @@ export default async function DashboardPage() {
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[var(--jaddid-navy)]">
-          مرحبًا{profile?.full_name ? `، ${profile.full_name}` : ""} 👋
+          مرحبًا{account.fullName ? `، ${account.fullName}` : ""} 👋
         </h1>
         <p className="text-sm text-slate-500">{orgName ?? user.email}</p>
+      </div>
+
+      <div className="mb-6">
+        <SubscriptionCard account={account} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
