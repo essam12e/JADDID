@@ -22,16 +22,26 @@ export function createAdminClient() {
     );
   }
 
-  // Catches the mistake that actually happened in production: the
-  // publishable/anon key pasted into SUPABASE_SERVICE_ROLE_KEY. The
-  // client builds fine and every request comes back 403 from RLS, so
-  // the outbox silently queued mail and never sent any of it. Failing
-  // here, by name, turns a week of invisible breakage into one log line.
-  if (serviceRoleKey === process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  // Catches the mistake that actually happened in production twice: a
+  // public key pasted into SUPABASE_SERVICE_ROLE_KEY. The client builds
+  // fine and every request comes back 403 from RLS, so the outbox
+  // silently queued mail and never sent any of it.
+  //
+  // Checked by SHAPE, not just by equality with the anon key. The first
+  // version only compared against NEXT_PUBLIC_SUPABASE_ANON_KEY, and
+  // missed the second attempt because Supabase's newer publishable key
+  // (`sb_publishable_…`) is a different string from the legacy anon JWT
+  // — so the guard passed and the 403s continued.
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const looksPublic =
+    serviceRoleKey === anonKey || serviceRoleKey.startsWith("sb_publishable_");
+
+  if (looksPublic) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is set to the publishable (anon) key. " +
-        "It must be the secret key — the anon key is blocked by RLS and every " +
-        "privileged query will return 403.",
+      "SUPABASE_SERVICE_ROLE_KEY holds a PUBLIC key (publishable/anon). " +
+        "It must be a secret key — Supabase Dashboard > Project Settings > " +
+        "API Keys > Secret keys, which starts with `sb_secret_`. A public key " +
+        "is blocked by RLS, so every privileged query returns 403.",
     );
   }
 
@@ -62,7 +72,8 @@ export async function checkAdminAccess(): Promise<AdminHealth> {
         ok: false,
         reason:
           `SUPABASE_SERVICE_ROLE_KEY cannot read email_outbox (${error.message}). ` +
-          "A real secret key bypasses RLS here; a publishable key gets 403.",
+          "A real secret key bypasses RLS here; any public key gets 403. " +
+          "Copy the one under Project Settings > API Keys > Secret keys.",
       };
     }
     return { ok: true };

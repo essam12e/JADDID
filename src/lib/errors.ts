@@ -17,6 +17,11 @@ const MESSAGES: Record<string, string> = {
     "انتهى اشتراكك. جدّد باقتك عشان تكمل استخدام جَدِّد.",
   JADDID_LIMIT_STORES: "وصلت للحد الأقصى من المتاجر في باقتك ({limit}). ترقّى لباقة أعلى عشان تضيف متجر جديد.",
   JADDID_LIMIT_USERS: "وصلت للحد الأقصى من المستخدمين في باقتك ({limit}). ترقّى لباقة أعلى عشان تضيف عضو جديد.",
+  JADDID_ADMIN_REQUIRED: "هذا الإجراء متاح لإدارة المنصّة فقط.",
+  JADDID_REQUEST_NOT_FOUND: "ما لقينا هذا الطلب. حدّث الصفحة.",
+  // Almost always a double-click on the approve button: the first click
+  // already succeeded, so this must not read like a failure.
+  JADDID_ALREADY_REVIEWED: "هذا الطلب تمت مراجعته من قبل — حدّث الصفحة عشان تشوف حالته.",
   JADDID_LIMIT_CUSTOMERS:
     "وصلت للحد الأقصى من العملاء النشطين في باقتك ({limit}). أرشف عميلًا منتهيًا أو ترقّى لباقة أعلى.",
 };
