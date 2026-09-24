@@ -7,6 +7,7 @@ import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/validations/
 import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
+import { checkPasswordPwned, pwnedMessage } from "@/lib/security/pwned";
 
 export default function SecurityForm() {
   const [serverError, setServerError] = useState<string | null>(null);
@@ -21,6 +22,15 @@ export default function SecurityForm() {
   async function onSubmit(values: ResetPasswordInput) {
     setServerError(null);
     setSuccess(false);
+
+    // Same breach check as signup and reset: a password change is the
+    // other moment a leaked password can enter the system.
+    const breach = pwnedMessage(await checkPasswordPwned(values.password));
+    if (breach) {
+      setServerError(breach);
+      return;
+    }
+
     const supabase = createClient();
     const { error } = await supabase.auth.updateUser({ password: values.password });
 

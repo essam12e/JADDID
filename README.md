@@ -300,6 +300,43 @@ and dates. That page links to sign-out rather than account settings —
 settings sit behind the same gate, so linking there would bounce the user
 straight back.
 
+## Leaked-password protection (without the paid plan)
+
+Supabase's own leaked-password protection is a Pro-plan feature, and this
+project is on Free — the security advisor will keep reporting
+`auth_leaked_password_protection` as disabled. `src/lib/security/pwned.ts`
+implements the same check against the same data source.
+
+**How it stays private.** The browser hashes the password with SHA-1 and
+sends only the **first five hex characters** of that hash to
+`api.pwnedpasswords.com/range/`. HIBP replies with every suffix sharing
+that prefix (~800 of them) and the comparison happens locally. The
+password and the full hash never leave the device — which is actually
+stronger than the paid feature, where the password reaches Supabase's
+server first.
+
+Wired into all three places a password can enter the system: signup,
+password reset, and the change-password form in settings. The check runs
+*before* the Supabase call, so a known-breached password is never even
+transmitted.
+
+Two behaviours worth knowing:
+
+* **It fails open.** An HIBP outage, a timeout, or a blocked network
+  returns `{ checked: false }` and the signup proceeds. A third-party
+  service being down must never stop someone creating an account.
+* **Padding entries are not hits.** The request sends `Add-Padding: true`
+  so the response size can't be used to fingerprint the prefix; HIBP then
+  pads the body with rows whose count is `0`. Reading one of those as a
+  match would reject a perfectly good password, so `countInRangeResponse`
+  treats a count of 0 as not-found.
+
+This is a guard rail, not a security boundary: passwords in this app go
+straight from the browser to Supabase Auth and never touch our server, so
+there is no server-side moment to enforce it from, and a determined user
+could skip it. It stops people reusing `123456789`; real protection still
+comes from Supabase's hashing and rate limiting.
+
 ## Performance
 
 Measured changes, not guesses:
