@@ -7,7 +7,6 @@ import {
   forgotPasswordSchema,
   type ForgotPasswordInput,
 } from "@/lib/validations/auth";
-import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
 
@@ -20,13 +19,18 @@ export default function ForgotPasswordForm() {
   } = useForm<ForgotPasswordInput>({ resolver: zodResolver(forgotPasswordSchema) });
 
   async function onSubmit(values: ForgotPasswordInput) {
-    const supabase = createClient();
-    // Always show the same success state regardless of whether the email
-    // exists — Supabase itself does not error here either way, which is
-    // exactly the point: no user-enumeration signal from this screen.
-    await supabase.auth.resetPasswordForEmail(values.email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-    });
+    // Our own route, not supabase.auth.resetPasswordForEmail(): that one
+    // sends Supabase's dashboard-only English template. The route mints
+    // the same recovery link and sends the Arabic, branded message.
+    //
+    // The success state shows regardless of the outcome — and the route
+    // answers identically for an unknown address — so this screen cannot
+    // be used to find out which emails have accounts.
+    await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    }).catch(() => null);
     setSent(true);
   }
 

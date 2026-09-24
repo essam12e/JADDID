@@ -208,6 +208,70 @@ export function passwordChangedEmail(params: { name?: string | null }): Rendered
   });
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// 7 & 8. Auth emails the APP sends, not Supabase.
+//
+// Supabase Auth mails signup-confirmation and password-recovery itself,
+// from templates that live only in its dashboard — unreachable from the
+// codebase, from migrations, and from every API this project holds. The
+// result was a stock English, unbranded message going to Arabic-speaking
+// merchants.
+//
+// So the app stops letting it send them: `auth.admin.generateLink()`
+// produces the confirmation/recovery link *without* mailing anything,
+// and these templates go out through the same Resend pipeline as the
+// rest of the product. Arabic, branded, logo, RTL — and no dashboard
+// step for anyone to forget.
+//
+// Both carry the one-time code as well as the link, because a link is
+// single-use (mail scanners open it first) and cannot cross devices
+// (PKCE keeps the verifier in the originating browser).
+// ─────────────────────────────────────────────────────────────────────────
+export function confirmSignupEmail(params: {
+  name?: string | null;
+  actionLink: string;
+  code?: string | null;
+}): RenderedEmail {
+  const who = params.name?.trim() ? ` يا ${params.name.trim()}` : "";
+  return build("أكّد بريدك وابدأ مع جَدِّد", {
+    preheader: "خطوة وحدة بس وحسابك يشتغل.",
+    heading: `هلا وغلا فيك${who}`,
+    paragraphs: [
+      "باقي خطوة وحدة بس عشان يشتغل حسابك في جَدِّد.",
+      "اضغط الزر تحت لتأكيد بريدك — ويا ليت تفتحه من نفس المتصفح اللي سجّلت منه.",
+    ],
+    button: { label: "تأكيد البريد الإلكتروني", url: params.actionLink },
+    info: params.code ? [{ label: "أو استخدم هذا الرمز", value: params.code }] : undefined,
+    outro: [
+      "الرمز يشتغل من أي جهاز — أدخله في صفحة التأكيد إذا ما ضبط معك الرابط.",
+      "إذا ما أنت اللي سجّلت، تجاهل هذي الرسالة وما بيصير شي.",
+    ],
+  });
+}
+
+export function resetPasswordEmail(params: {
+  name?: string | null;
+  actionLink: string;
+  code?: string | null;
+}): RenderedEmail {
+  const who = params.name?.trim() ? ` يا ${params.name.trim()}` : "";
+  return build("إعادة تعيين كلمة المرور — جَدِّد", {
+    preheader: "رابط إعادة تعيين كلمة مرورك.",
+    heading: `إعادة تعيين كلمة المرور${who}`,
+    paragraphs: [
+      "وصلنا طلب لإعادة تعيين كلمة مرور حسابك في جَدِّد.",
+      "اضغط الزر تحت وتقدر تحط كلمة مرور جديدة على طول.",
+    ],
+    button: { label: "تعيين كلمة مرور جديدة", url: params.actionLink },
+    info: params.code ? [{ label: "أو استخدم هذا الرمز", value: params.code }] : undefined,
+    outro: [
+      "الرابط صالح لفترة محدودة، وينتهي بمجرد ما تستخدمه.",
+      "إذا ما أنت اللي طلبت، تجاهل الرسالة — كلمة مرورك ما تغيّرت.",
+    ],
+  });
+}
+
 export const TEMPLATES = {
   welcome: welcomeEmail,
   activation_submitted: activationSubmittedEmail,
@@ -215,6 +279,8 @@ export const TEMPLATES = {
   activation_rejected: activationRejectedEmail,
   renewal_digest: renewalDigestEmail,
   password_changed: passwordChangedEmail,
+  confirm_signup: confirmSignupEmail,
+  reset_password: resetPasswordEmail,
 } as const;
 
 export type TemplateName = keyof typeof TEMPLATES;

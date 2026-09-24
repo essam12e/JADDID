@@ -1,16 +1,37 @@
 # Supabase auth email templates (Arabic)
 
-Supabase Auth sends the signup-confirmation, password-reset and
-email-change messages itself, from templates stored in the project's
-dashboard. Those templates are **not** reachable from the codebase or
-from any API this project has, so they cannot be deployed with a
-migration — they have to be pasted in once.
+> **The two that matter are no longer needed.** Signup confirmation and
+> password reset are now sent by the application itself, in Arabic, with
+> the logo — see "The app sends them now" below. Nothing has to be pasted
+> for those two.
 
-Until that is done, Supabase sends its stock English template
-("Confirm your email address"), which is why a merchant who signs up in
-Arabic gets an English, unbranded email.
+Supabase Auth sends signup-confirmation, password-reset and email-change
+from templates stored in its **dashboard**. Those are not reachable from
+the codebase or from any API this project holds, so they cannot be
+deployed with a migration — which is exactly why merchants kept getting
+the stock English "Confirm your email address" no matter what the repo
+said.
 
-These three files are ready to paste. They use the same layout, brand
+## The app sends them now
+
+`src/lib/auth/mailLinks.ts` calls `auth.admin.generateLink()`, which
+mints the confirmation / recovery link **and its one-time code without
+mailing anything**. The app then queues its own Arabic message through
+the same Resend outbox as every other email it sends.
+
+* `POST /api/auth/signup` replaces `supabase.auth.signUp()`
+* `POST /api/auth/reset-password` replaces `supabase.auth.resetPasswordForEmail()`
+
+Both answer identically for an address that does or doesn't have an
+account, so neither screen can be used to enumerate registered emails,
+and both are rate-limited per address by counting recent outbox rows —
+no extra table.
+
+## These files are now a fallback
+
+Still worth pasting in, because Supabase will use its own template for
+any flow that does not go through the routes above (email change, or a
+link generated outside the app). They use the same layout, brand
 colours, RTL direction and logo as every other email JADDID sends.
 
 | File | Dashboard template |
