@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DEFAULT_IMPORT_LIMIT } from "@/lib/validations/import";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { flushEmailQueue } from "@/lib/email/flushClient";
@@ -295,6 +296,10 @@ export default function OnboardingWizard({
                   >
                     {importing ? "جاري الاستيراد..." : "بدء الاستيراد"}
                   </button>
+                  <p className="text-center text-xs text-slate-500">
+                    نستورد أول {DEFAULT_IMPORT_LIMIT} منتج عشان تخلص الإعداد بسرعة — تقدر
+                    تكمّل الباقي من لوحة المنتجات.
+                  </p>
                 </div>
               ) : importResult.status === "failed" ? (
                 <div className="space-y-3">
