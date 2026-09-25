@@ -45,7 +45,7 @@ export default function ProblemSection() {
           </div>
         </Reveal>
 
-        <div className="mt-12 grid gap-4 sm:grid-cols-2">
+        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {PAIRS.map((p, i) => (
             <Reveal key={p.problem} delay={(i % 2) * 0.08}>
               <div className="flex h-full flex-col gap-3 rounded-2xl border border-[var(--jaddid-border)] bg-[var(--jaddid-surface)] p-5">

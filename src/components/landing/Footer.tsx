@@ -31,7 +31,7 @@ export default function Footer() {
   return (
     <footer className="border-t border-[var(--jaddid-border)] bg-white">
       <div className="mx-auto max-w-6xl px-6 py-14">
-        <div className="grid gap-10 sm:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-[1.3fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2">
               <Image

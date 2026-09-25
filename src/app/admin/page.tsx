@@ -79,7 +79,7 @@ export default async function AdminOverviewPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-[var(--jaddid-border)] bg-white p-5">
           <h2 className="mb-4 text-sm font-bold text-[var(--jaddid-navy)]">حالة المؤسسات</h2>
           {Object.keys(statusCounts).length === 0 ? (

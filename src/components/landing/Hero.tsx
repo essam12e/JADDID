@@ -67,7 +67,7 @@ export default function Hero() {
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-6 pb-24 pt-16 sm:pt-24 lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:pb-28">
+      <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-6 pb-24 pt-16 sm:pt-24 lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:pb-28">
         {/* Copy — leads on the right in RTL reading order */}
         <div className="text-center lg:order-2 lg:text-right">
           <span className="hero-eyebrow inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-xs font-bold text-[var(--jaddid-cyan)] backdrop-blur">

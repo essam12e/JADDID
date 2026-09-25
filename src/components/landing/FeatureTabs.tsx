@@ -51,7 +51,7 @@ export default function FeatureTabs() {
 
       <div
         key={active.id}
-        className="mt-10 grid items-center gap-10 rounded-3xl border border-[var(--jaddid-border)] bg-white p-6 shadow-sm sm:grid-cols-2 sm:p-10"
+        className="mt-10 grid grid-cols-1 items-center gap-10 rounded-3xl border border-[var(--jaddid-border)] bg-white p-6 shadow-sm sm:grid-cols-2 sm:p-10"
         style={{ animation: "feature-panel-in 0.4s ease" }}
       >
         <div>
