@@ -235,3 +235,86 @@ describe("a homepage that is not a product page", () => {
       });
   });
 });
+
+describe("a store that is throttling when the import starts", () => {
+  it("retries the landing page instead of failing the whole import", async () => {
+    const { sitemap } = catalogue(6);
+    let landingHits = 0;
+
+    safeFetchMock.mockImplementation(async (url: string) => {
+      if (url === `${ORIGIN}/ar/`) {
+        landingHits += 1;
+        // Refuses once, then relents — the usual shape of a rate limit.
+        if (landingHits === 1) {
+          return {
+            ok: false,
+            status: 429,
+            url,
+            headers: new Headers({ "retry-after": "0" }),
+          } as unknown as Response;
+        }
+        return textResponse("<html><body>متجر</body></html>", url);
+      }
+      if (url === `${ORIGIN}/sitemap.xml`) return textResponse(sitemap, url);
+      const match = /\/ar\/slug(\d+)$/.exec(url);
+      if (match) return textResponse(productPage(Number(match[1])), url);
+      return notFound(url);
+    });
+
+    const result = await new StorefrontAdapter().extract(new URL(`${ORIGIN}/ar/`), {
+      maxRequestsPerSecond: 5_000,
+    });
+
+    expect(landingHits).toBeGreaterThan(1);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.products).toHaveLength(6);
+  });
+
+  it("still crawls from the sitemap when the landing page stays refused", async () => {
+    const { sitemap } = catalogue(4);
+
+    safeFetchMock.mockImplementation(async (url: string) => {
+      if (url === `${ORIGIN}/ar/`) {
+        return {
+          ok: false,
+          status: 429,
+          url,
+          headers: new Headers({ "retry-after": "0" }),
+        } as unknown as Response;
+      }
+      if (url === `${ORIGIN}/sitemap.xml`) return textResponse(sitemap, url);
+      const match = /\/ar\/slug(\d+)$/.exec(url);
+      if (match) return textResponse(productPage(Number(match[1])), url);
+      return notFound(url);
+    });
+
+    const result = await new StorefrontAdapter().extract(new URL(`${ORIGIN}/ar/`), {
+      maxRequestsPerSecond: 5_000,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.products).toHaveLength(4);
+  });
+
+  it("says what to do when nothing can be reached at all", async () => {
+    safeFetchMock.mockImplementation(async (url: string) => {
+      return {
+        ok: false,
+        status: 429,
+        url,
+        headers: new Headers({ "retry-after": "0" }),
+      } as unknown as Response;
+    });
+
+    const result = await new StorefrontAdapter().extract(new URL(`${ORIGIN}/ar/`), {
+      maxRequestsPerSecond: 5_000,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain("انتظر دقيقة");
+    expect(result.reason).not.toContain("Shopify");
+  });
+});
