@@ -41,11 +41,41 @@ describe("extractVisibleHtml", () => {
     expect(extractVisibleHtml(html, PAGE)[0].price).toBe(75);
   });
 
-  it("falls back to loose text when nothing is marked as a price", () => {
-    const html = `<h1>حقيبة سفر</h1><div>السعر: 310 ر.س</div>`;
+  it("falls back to loose text on a page that is actually selling", () => {
+    const html = `<h1>حقيبة سفر</h1><div>السعر: 310 ر.س</div><button>أضف للسلة</button>`;
     const [product] = extractVisibleHtml(html, PAGE);
     expect(product.price).toBe(310);
     expect(product.name).toBe("حقيبة سفر");
+  });
+
+  it("does not scan loose text on a page with nothing to buy", () => {
+    // A category listing or an article mentions prices without being a
+    // product page; the loose scan there is a guess, not a reading.
+    const html = `<h1>عروض الموسم</h1><p>تبدأ الأسعار من 310 ر.س</p>`;
+    expect(extractVisibleHtml(html, PAGE)).toEqual([]);
+  });
+
+  it("does not read a shop's VAT number as a price", () => {
+    // Exactly what a real Salla storefront's footer looks like. This
+    // produced a product called after the shop, priced at its tax
+    // number, which then stopped the importer from reading the shop's
+    // 619 real products.
+    const html = `
+      <html><head>
+        <meta property="og:type" content="store">
+        <meta property="og:title" content="ORIMA-اوريما">
+      </head><body>
+        <p class="mb-1">الرقم الضريبي</p>
+        <p> 311263353400003</p>
+        <span> ر.س</span>
+        <button>أضف للسلة</button>
+      </body></html>`;
+    expect(extractVisibleHtml(html, PAGE)).toEqual([]);
+  });
+
+  it("rejects a marked price that is too large to be one", () => {
+    const html = `<h1>منتج</h1><div class="price">311263353400003 ر.س</div><button>أضف للسلة</button>`;
+    expect(extractVisibleHtml(html, PAGE)).toEqual([]);
   });
 
   it("returns nothing for a page with no price", () => {

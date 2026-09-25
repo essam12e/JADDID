@@ -29,9 +29,23 @@ const CURRENCIES: Array<[RegExp, string]> = [
   [/EUR|€/i, "EUR"],
 ];
 
+/**
+ * A price is a price, not any large number.
+ *
+ * A real shop's footer carries a VAT number ("الرقم الضريبي
+ * 311263353400003") a few characters from a currency symbol, and the
+ * loose text scan below happily read it as the price of a product named
+ * after the shop. Anything this large is not something a customer pays.
+ */
+const MAX_PLAUSIBLE_PRICE = 1_000_000;
+
+/** Signals that this page sells the thing it is describing. */
+const BUY_SIGNAL =
+  /أضف\s*(?:للسلة|إلى\s*السلة|الى\s*السلة)|أضف\s*للعربة|اشتر(?:ِ|ي)\s*الآن|add\s*to\s*(?:cart|bag|basket)|buy\s*now|itemprop=["']price["']|<meta[^>]+product:price:amount/i;
+
 /** A number carrying a currency marker on either side. */
 const PRICED_TEXT =
-  /(?:ر\.?\s?س|﷼|SAR|د\.?\s?إ|AED|د\.?\s?ك|KWD|ر\.?\s?ع|OMR|د\.?\s?ب|BHD|ر\.?\s?ق|QAR|ج\.?\s?م|EGP|USD|\$|EUR|€)\s*([\d٠-٩][\d٠-٩.,\s]{0,14})|([\d٠-٩][\d٠-٩.,]{0,14})\s*(?:ر\.?\s?س|﷼|SAR|د\.?\s?إ|AED|د\.?\s?ك|KWD|ر\.?\s?ع|OMR|د\.?\s?ب|BHD|ر\.?\s?ق|QAR|ج\.?\s?م|EGP|USD|\$|EUR|€)/i;
+  /(?:ر\.?\s?س|﷼|SAR|د\.?\s?إ|AED|د\.?\s?ك|KWD|ر\.?\s?ع|OMR|د\.?\s?ب|BHD|ر\.?\s?ق|QAR|ج\.?\s?م|EGP|USD|\$|EUR|€)\s{0,2}([\d٠-٩][\d٠-٩.,]{0,12})|([\d٠-٩][\d٠-٩.,]{0,12})\s{0,2}(?:ر\.?\s?س|﷼|SAR|د\.?\s?إ|AED|د\.?\s?ك|KWD|ر\.?\s?ع|OMR|د\.?\s?ب|BHD|ر\.?\s?ق|QAR|ج\.?\s?م|EGP|USD|\$|EUR|€)/i;
 
 function fingerprint(parts: string[]): string {
   return createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 32);
@@ -46,14 +60,17 @@ function withoutCode(html: string): string {
 
 /** A price the template marked as one: an attribute or a price-ish class. */
 function markedPrice(html: string): number | null {
+  const plausible = (value: number | null) =>
+    value != null && value > 0 && value <= MAX_PLAUSIBLE_PRICE ? value : null;
+
   const attributes = [
     /<[^>]*itemprop=["']price["'][^>]*content=["']([^"']+)["']/i,
     /<[^>]*content=["']([^"']+)["'][^>]*itemprop=["']price["']/i,
     /\bdata-(?:product-)?price=["']([^"']+)["']/i,
   ];
   for (const pattern of attributes) {
-    const price = parsePrice(html.match(pattern)?.[1]);
-    if (price != null && price > 0) return price;
+    const price = plausible(parsePrice(html.match(pattern)?.[1]));
+    if (price != null) return price;
   }
 
   // <span class="product-price">49.00 ر.س</span> and its many cousins.
@@ -61,19 +78,28 @@ function markedPrice(html: string): number | null {
     /<(?:span|div|p|b|strong|bdi|ins|h[1-6])[^>]*(?:class|id)=["'][^"']*(?:price|amount|سعر)[^"']*["'][^>]*>([\s\S]{0,120}?)<\//gi,
   );
   for (const match of marked) {
-    const price = parsePrice(stripTags(match[1]));
-    if (price != null && price > 0) return price;
+    const price = plausible(parsePrice(stripTags(match[1])));
+    if (price != null) return price;
   }
   return null;
 }
 
-/** Nothing was marked, so fall back to the first priced-looking text. */
+/**
+ * Nothing was marked, so fall back to the first priced-looking text —
+ * but only on a page that is actually selling something. On a homepage
+ * or an "about us" page this scan has nothing to find and everything to
+ * get wrong.
+ */
 function textPrice(html: string): number | null {
+  if (!BUY_SIGNAL.test(html)) return null;
+
   const body = stripTags(withoutCode(html));
   const match = body.match(PRICED_TEXT);
   if (!match) return null;
+
   const price = parsePrice(match[1] ?? match[2]);
-  return price != null && price > 0 ? price : null;
+  if (price == null || price <= 0 || price > MAX_PLAUSIBLE_PRICE) return null;
+  return price;
 }
 
 function readName(html: string): string | null {
