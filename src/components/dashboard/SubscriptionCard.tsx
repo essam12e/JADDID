@@ -124,15 +124,17 @@ export default function SubscriptionCard({ account }: { account: AccountOverview
         />
       </div>
 
-      {endingSoon ? (
-        <Link
-          href="/pricing"
-          className="mt-4 inline-block rounded-xl px-4 py-2 text-xs font-bold text-white"
-          style={{ background: "var(--gradient-brand)" }}
-        >
-          جدّد أو رقّي باقتك
-        </Link>
-      ) : null}
+      {/* Always reachable: a merchant who wants a bigger plan should not
+          have to wait until theirs is about to expire to find the page. */}
+      <Link
+        href="/dashboard/subscription"
+        className={`mt-4 inline-block rounded-xl px-4 py-2 text-xs font-bold ${
+          endingSoon ? "text-white" : "border border-[var(--jaddid-border)] text-[var(--jaddid-navy)]"
+        }`}
+        style={endingSoon ? { background: "var(--gradient-brand)" } : undefined}
+      >
+        جدّد أو رقّي باقتك
+      </Link>
     </section>
   );
 }

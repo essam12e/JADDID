@@ -10,12 +10,42 @@
  */
 
 export const TEMPLATE_VARIABLES = [
-  { token: "{{customer_name}}", description: "اسم العميل" },
-  { token: "{{product_name}}", description: "اسم المنتج/الخدمة" },
-  { token: "{{remaining_days}}", description: "عدد الأيام المتبقية (قد يكون سالبًا إن كان الاشتراك منتهيًا)" },
-  { token: "{{end_date}}", description: "تاريخ انتهاء الاشتراك" },
-  { token: "{{renewal_url}}", description: "رابط التجديد الخاص بالمنتج (إن وُجد)" },
-  { token: "{{store_name}}", description: "اسم متجرك" },
+  {
+    token: "{{customer_name}}",
+    label: "اسم العميل",
+    description: "اسم العميل",
+    sample: "محمد العتيبي",
+  },
+  {
+    token: "{{product_name}}",
+    label: "اسم المنتج",
+    description: "اسم المنتج أو الخدمة المشترك فيها",
+    sample: "اشتراك نتفلكس",
+  },
+  {
+    token: "{{remaining_days}}",
+    label: "الأيام المتبقية",
+    description: "عدد الأيام المتبقية (قد يكون سالبًا إن كان الاشتراك منتهيًا)",
+    sample: "3",
+  },
+  {
+    token: "{{end_date}}",
+    label: "تاريخ الانتهاء",
+    description: "تاريخ انتهاء الاشتراك",
+    sample: "25 أكتوبر 2026",
+  },
+  {
+    token: "{{renewal_url}}",
+    label: "رابط التجديد",
+    description: "رابط التجديد الخاص بالمنتج (إن وُجد)",
+    sample: "https://your-store.com/renew",
+  },
+  {
+    token: "{{store_name}}",
+    label: "اسم متجرك",
+    description: "اسم متجرك كما يظهر للعميل",
+    sample: "متجر النور",
+  },
 ] as const;
 
 export interface TemplateVariables {

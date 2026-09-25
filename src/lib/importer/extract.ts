@@ -20,7 +20,12 @@ import type { ExtractedProduct } from "./types";
  * real page fixtures instead of only against a live site.
  */
 
-type JsonLdOffer = { price?: string | number; priceCurrency?: string; availability?: string };
+type JsonLdOffer = {
+  price?: string | number;
+  priceCurrency?: string;
+  availability?: string;
+  url?: string;
+};
 type JsonLdNode = {
   "@type"?: string | string[];
   "@graph"?: JsonLdNode[];
@@ -37,6 +42,17 @@ type JsonLdNode = {
 
 function fingerprint(parts: string[]): string {
   return createHash("sha1").update(parts.join(":")).digest("hex");
+}
+
+/** A page's own claim about its URL, honoured only within its origin. */
+function sameOriginOr(claimed: string | null | undefined, pageUrl: string): string {
+  const resolved = absolute(claimed, pageUrl);
+  if (!resolved) return pageUrl;
+  try {
+    return new URL(resolved).origin === new URL(pageUrl).origin ? resolved : pageUrl;
+  } catch {
+    return pageUrl;
+  }
 }
 
 function isProductNode(node: JsonLdNode): boolean {
@@ -92,7 +108,10 @@ export function extractJsonLd(html: string, pageUrl: string): ExtractedProduct[]
 
   return nodes.map((node) => {
     const offer = firstOffer(node.offers);
-    const sourceUrl = absolute(node.url, pageUrl) ?? pageUrl;
+    // Salla reaches the same product from two paths (an opaque slug and
+    // a numeric one), so prefer the URL the page names as its own —
+    // otherwise one product gets imported twice.
+    const sourceUrl = sameOriginOr(node.url ?? offer?.url, pageUrl);
     return {
       name: node.name?.trim() || "منتج بدون اسم",
       description: node.description ? stripTags(node.description).slice(0, 2000) : null,
@@ -233,14 +252,18 @@ export function dedupe(products: ExtractedProduct[]): ExtractedProduct[] {
  * no microdata, and `og:type=website`.
  */
 export function extractFromHtml(html: string, pageUrl: string): ExtractedProduct[] {
-  const found = [
-    ...extractJsonLd(html, pageUrl),
-    ...extractMicrodata(html, pageUrl),
-  ];
-  if (found.length === 0) found.push(...extractEmbeddedJson(html, pageUrl));
-  if (found.length === 0) found.push(...extractOpenGraph(html, pageUrl));
-  if (found.length === 0) found.push(...extractVisibleHtml(html, pageUrl));
-  return dedupe(found).filter((p) => p.name && p.name !== "منتج بدون اسم");
+  // Each pass is only "successful" once its junk is gone. Filtering at the
+  // end instead let one nameless JSON-LD node count as a result, block
+  // every later pass, and then get dropped — which is how a Salla page
+  // carrying a perfectly good og:type=product read as empty.
+  const usable = (products: ExtractedProduct[]) =>
+    dedupe(products).filter((p) => p.name?.trim().length >= 2 && p.name !== "منتج بدون اسم");
+
+  let found = usable([...extractJsonLd(html, pageUrl), ...extractMicrodata(html, pageUrl)]);
+  if (found.length === 0) found = usable(extractEmbeddedJson(html, pageUrl));
+  if (found.length === 0) found = usable(extractOpenGraph(html, pageUrl));
+  if (found.length === 0) found = usable(extractVisibleHtml(html, pageUrl));
+  return found;
 }
 
 export type PageEvidence = {

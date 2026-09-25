@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { templateSchema, type TemplateInput } from "@/lib/validations/template";
-import { TEMPLATE_VARIABLES } from "@/lib/domain/whatsapp";
+import { TEMPLATE_VARIABLES, renderTemplate } from "@/lib/domain/whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import FormField from "@/components/auth/FormField";
 import SubmitButton from "@/components/auth/SubmitButton";
@@ -27,9 +27,14 @@ export default function TemplateForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  // Mirrors the textarea so the preview can re-render without `watch()`,
+  // which the React Compiler refuses to memoize around.
+  const [body, setBody] = useState(existing?.body ?? "");
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<TemplateInput>({
     resolver: zodResolver(templateSchema),
@@ -78,6 +83,51 @@ export default function TemplateForm({
     router.refresh();
   }
 
+  /**
+   * Drops a variable where the cursor is.
+   *
+   * The chips used to be plain text, so writing `{{customer_name}}` meant
+   * copying it by hand — and one typo silently ships a message with a raw
+   * token in it. Clicking writes it correctly every time.
+   */
+  function insertVariable(token: string) {
+    const field = bodyRef.current;
+    if (!field) {
+      const appended = `${body}${token}`;
+      setValue("body", appended, { shouldDirty: true });
+      setBody(appended);
+      return;
+    }
+
+    const start = field.selectionStart ?? field.value.length;
+    const end = field.selectionEnd ?? start;
+    const next = field.value.slice(0, start) + token + field.value.slice(end);
+
+    setValue("body", next, { shouldDirty: true, shouldValidate: true });
+    setBody(next);
+
+    // Put the caret after what we just inserted, so several chips in a row
+    // read as one sentence instead of stacking at the start.
+    requestAnimationFrame(() => {
+      field.focus();
+      const caret = start + token.length;
+      field.setSelectionRange(caret, caret);
+    });
+  }
+
+  const { ref: registerBodyRef, onChange: onBodyChange, ...bodyField } = register("body");
+
+  const preview = body.trim()
+    ? renderTemplate(body, {
+        customer_name: "محمد العتيبي",
+        product_name: "اشتراك نتفلكس",
+        remaining_days: 3,
+        end_date: "25 أكتوبر 2026",
+        renewal_url: "https://your-store.com/renew",
+        store_name: "متجر النور",
+      })
+    : "";
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       {serverError ? (
@@ -89,7 +139,15 @@ export default function TemplateForm({
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-slate-700">نص الرسالة</span>
         <textarea
-          {...register("body")}
+          {...bodyField}
+          onChange={(event) => {
+            setBody(event.target.value);
+            return onBodyChange(event);
+          }}
+          ref={(node) => {
+            registerBodyRef(node);
+            bodyRef.current = node;
+          }}
           rows={5}
           dir="rtl"
           className="w-full rounded-xl border border-[var(--jaddid-border)] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[var(--jaddid-blue)] focus:ring-2 focus:ring-[var(--jaddid-blue)]/20"
@@ -98,20 +156,32 @@ export default function TemplateForm({
       </label>
 
       <div className="rounded-xl bg-[var(--jaddid-surface)] p-3">
-        <p className="mb-2 text-xs font-semibold text-slate-500">المتغيرات المتاحة:</p>
+        <p className="mb-2 text-xs font-semibold text-slate-500">
+          اضغط على المتغيّر لإضافته داخل الرسالة:
+        </p>
         <div className="flex flex-wrap gap-1.5">
           {TEMPLATE_VARIABLES.map((v) => (
-            <span
+            <button
               key={v.token}
+              type="button"
+              onClick={() => insertVariable(v.token)}
               title={v.description}
-              className="rounded-md bg-white px-2 py-1 text-[11px] font-mono text-[var(--jaddid-blue)]"
-              dir="ltr"
+              className="rounded-md bg-white px-2.5 py-1.5 text-[11px] font-medium text-[var(--jaddid-navy)] transition hover:bg-[var(--jaddid-blue)] hover:text-white"
             >
-              {v.token}
-            </span>
+              {v.label}
+            </button>
           ))}
         </div>
       </div>
+
+      {preview ? (
+        <div className="rounded-xl border border-[var(--jaddid-border)] bg-white p-3">
+          <p className="mb-2 text-xs font-semibold text-slate-500">
+            معاينة الرسالة كما تصل العميل:
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-[var(--jaddid-navy)]">{preview}</p>
+        </div>
+      ) : null}
 
       <FormField
         label="عدد الأيام قبل الانتهاء (اختياري — لاختيار القالب المناسب تلقائيًا)"

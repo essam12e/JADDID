@@ -59,9 +59,18 @@ export default async function CustomersPage({
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-[var(--jaddid-navy)]">العملاء</h1>
-        <p className="text-sm text-slate-500">{customers?.length ?? 0} عميل</p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--jaddid-navy)]">العملاء</h1>
+          <p className="text-sm text-slate-500">{customers?.length ?? 0} عميل</p>
+        </div>
+        <Link
+          href="/dashboard/customers/new"
+          className="shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold text-white"
+          style={{ background: "var(--gradient-brand)" }}
+        >
+          + إضافة عميل
+        </Link>
       </div>
 
       <form className="mb-5">
@@ -80,8 +89,17 @@ export default async function CustomersPage({
             {q ? "لا توجد نتائج مطابقة" : "لا يوجد عملاء بعد"}
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            سجّل عملية بيع من صفحة أحد المنتجات ليظهر العميل هنا.
+            أضف عميلًا يدويًا، أو سجّل عملية بيع من صفحة أحد المنتجات.
           </p>
+          {q ? null : (
+            <Link
+              href="/dashboard/customers/new"
+              className="mt-5 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
+              style={{ background: "var(--gradient-brand)" }}
+            >
+              + إضافة عميل
+            </Link>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[var(--jaddid-border)] bg-white">
