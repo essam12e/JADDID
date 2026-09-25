@@ -22,7 +22,7 @@ const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 // by the function's lifetime and paced by the store's own rate limit —
 // so the window has to allow a continuation to finish. Each pass is
 // itself bounded, so this is still a ceiling on outbound traffic.
-const RATE_LIMIT_MAX_PER_WINDOW = 15;
+const RATE_LIMIT_MAX_PER_WINDOW = 25;
 
 export async function POST(request: Request) {
   const supabase = await createClient();

@@ -198,3 +198,40 @@ describe("a store that rate-limits the crawl", () => {
     expect(result.partial).toBe(true);
   });
 });
+
+describe("a homepage that is not a product page", () => {
+  it("crawls the catalogue instead of importing the shop itself", () => {
+    // The homepage's own markup can look product-shaped (a shop name in
+    // og:title, a number in the footer). Reading it as one product ended
+    // the import there and left the real catalogue untouched.
+    const { sitemap } = catalogue(12);
+
+    safeFetchMock.mockImplementation(async (url: string) => {
+      if (url === `${ORIGIN}/` || url === `${ORIGIN}/ar/`) {
+        return textResponse(
+          `<html><head>
+             <meta property="og:type" content="store">
+             <meta property="og:title" content="متجر النور">
+           </head><body>
+             <p>الرقم الضريبي</p><p> 311263353400003</p><span> ر.س</span>
+             <button>أضف للسلة</button>
+           </body></html>`,
+          url,
+        );
+      }
+      if (url === `${ORIGIN}/sitemap.xml`) return textResponse(sitemap, url);
+      const match = /\/ar\/slug(\d+)$/.exec(url);
+      if (match) return textResponse(productPage(Number(match[1])), url);
+      return notFound(url);
+    });
+
+    return new StorefrontAdapter()
+      .extract(new URL(`${ORIGIN}/ar/`), { maxRequestsPerSecond: 5_000 })
+      .then((result) => {
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.products).toHaveLength(12);
+        expect(result.products.map((p) => p.name)).not.toContain("متجر النور");
+      });
+  });
+});

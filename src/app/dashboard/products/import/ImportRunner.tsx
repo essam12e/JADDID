@@ -57,8 +57,10 @@ export default function ImportRunner({
     let last: ImportResult | null = null;
 
     // Bounded so a store that always reports work left can't loop here
-    // forever; what is left is reported instead.
-    for (let pass = 0; pass < 12; pass++) {
+    // forever; what is left is reported instead. A rate-limited store
+    // hands back roughly sixty products a pass, so this covers a
+    // catalogue of over a thousand.
+    for (let pass = 0; pass < 20; pass++) {
       let data: ImportResult;
       try {
         const res = await fetch("/api/import", {

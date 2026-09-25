@@ -4,6 +4,7 @@ import { extractFromHtml, dedupe, describePage, type PageEvidence } from "../ext
 import {
   detectPlatform,
   rankedProductUrls,
+  rankProductUrl,
   isSitemapIndex,
   parseSitemapLocs,
   productLinksFromHtml,
@@ -48,8 +49,12 @@ const MAX_RATE_PER_SECOND = 12;
 const BASE_COOLDOWN_MS = 1_500;
 const MIN_COOLDOWN_MS = 200;
 const MAX_COOLDOWN_MS = 8_000;
-/** Give up once the store has refused this many batches in a row. */
-const MAX_THROTTLED_BATCHES = 6;
+/**
+ * Give up once the store has refused this many batches in a row. The
+ * deadline is the real guard — this only stops a run from spending its
+ * whole budget on cooldowns when the store has clearly stopped talking.
+ */
+const MAX_THROTTLED_BATCHES = 10;
 
 type WooProduct = {
   id: number;
@@ -187,9 +192,17 @@ export class StorefrontAdapter implements StoreImporter {
     const platform: Platform = detectPlatform(page.text, url.toString());
 
     // 1. The page itself — it may already be a product page.
-    const direct = extractFromHtml(page.text, page.finalUrl);
-    if (direct.length > 0) {
-      return { ok: true, products: dedupe(direct) };
+    //
+    // Only if its URL says it could be. A shop's homepage is not a
+    // product, and treating one as such ends the import at a single junk
+    // row: on a real store this read the shop's name and the VAT number
+    // out of the footer, called it a product, and never went looking for
+    // the 619 actual ones.
+    if (rankProductUrl(page.finalUrl) !== "no") {
+      const direct = extractFromHtml(page.text, page.finalUrl);
+      if (direct.length > 0) {
+        return { ok: true, products: dedupe(direct) };
+      }
     }
 
     // 2. WooCommerce exposes everything without scraping.
