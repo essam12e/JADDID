@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { drainOutbox } from "@/lib/email/outbox";
+import { recentlySent } from "@/lib/auth/mailLinks";
 
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
@@ -30,6 +31,13 @@ export async function POST() {
 
   try {
     const admin = createAdminClient();
+
+    // Takes no parameters, so it can only notify the caller — but a
+    // caller in a loop would still grow the outbox and burn the mail
+    // quota. Two notices in ten minutes is more than anyone needs.
+    if (await recentlySent(admin, user.email, "password_changed", 10, 2)) {
+      return NextResponse.json({ ok: true, skipped: "throttled" });
+    }
     const { data: profile } = await admin
       .from("profiles")
       .select("full_name")

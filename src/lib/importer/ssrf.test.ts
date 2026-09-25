@@ -122,3 +122,25 @@ describe("assertSafeImportUrl", () => {
     expect(result.safe).toBe(true);
   });
 });
+
+describe("port restrictions", () => {
+  it("allows the ports a storefront actually answers on", async () => {
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    for (const url of [
+      "https://shop.example.com/",
+      "https://shop.example.com:443/",
+      "http://shop.example.com:80/",
+      "https://shop.example.com:8443/",
+    ]) {
+      const result = await assertSafeImportUrl(url);
+      expect(result.safe, url).toBe(true);
+    }
+  });
+
+  it("refuses service ports, so the importer is not a port scanner", async () => {
+    for (const port of [22, 25, 3306, 5432, 6379, 9200, 11211]) {
+      const result = await assertSafeImportUrl(`https://shop.example.com:${port}/`);
+      expect(result.safe, `port ${port}`).toBe(false);
+    }
+  });
+});

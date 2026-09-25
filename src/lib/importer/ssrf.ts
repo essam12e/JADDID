@@ -23,6 +23,14 @@ import net from "node:net";
  *    being followed, up to a small limit.
  */
 
+/**
+ * A storefront answers on the web's ports. Anything else — 22, 5432,
+ * 6379, 9200 — is a service, and letting a user aim this server at one
+ * turns the importer into a port scanner with our IP on it. The header
+ * comment above always claimed this rule; the code did not enforce it.
+ */
+const ALLOWED_PORTS = new Set(["", "80", "443", "8080", "8443"]);
+
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
   "localhost.localdomain",
@@ -141,6 +149,10 @@ export async function assertSafeImportUrl(
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { safe: false, reason: "يُسمح فقط بروابط http أو https." };
+  }
+
+  if (!ALLOWED_PORTS.has(url.port)) {
+    return { safe: false, reason: "لا يمكن استيراد هذا الرابط." };
   }
 
   // Node's URL keeps the brackets around an IPv6 literal host
