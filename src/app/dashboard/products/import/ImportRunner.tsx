@@ -11,6 +11,9 @@ type ImportResult = {
   unchanged: number;
   failed: number;
   attempts?: { adapter: string; reason: string }[];
+  /** The crawl stopped on its time budget with pages still queued. */
+  partial?: boolean;
+  remaining?: number;
 };
 
 export default function ImportRunner({
@@ -22,26 +25,87 @@ export default function ImportRunner({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<{ read: number; left: number } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
 
+  /**
+   * Imports the whole catalogue, however many passes that takes.
+   *
+   * One request can only crawl for as long as the serverless function
+   * lives, and the store rate-limits us on top of that — so a large shop
+   * comes back marked `partial`. Each pass skips what is already stored,
+   * so calling again continues rather than repeats. The merchant presses
+   * the button once.
+   */
   async function run() {
     setLoading(true);
     setResult(null);
-    try {
-      const res = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storeId, sourceUrl: storeUrl }),
-      });
-      const data = await res.json();
-      setResult(
-        res.ok
-          ? data
-          : { status: "failed", total: 0, imported: 0, unchanged: 0, failed: 0 },
-      );
-    } catch {
-      setResult({ status: "failed", total: 0, imported: 0, unchanged: 0, failed: 0 });
+    setProgress(null);
+
+    const failure: ImportResult = {
+      status: "failed",
+      total: 0,
+      imported: 0,
+      unchanged: 0,
+      failed: 0,
+    };
+
+    let imported = 0;
+    let unchanged = 0;
+    let failed = 0;
+    let total = 0;
+    let last: ImportResult | null = null;
+
+    // Bounded so a store that always reports work left can't loop here
+    // forever; what is left is reported instead.
+    for (let pass = 0; pass < 12; pass++) {
+      let data: ImportResult;
+      try {
+        const res = await fetch("/api/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storeId, sourceUrl: storeUrl }),
+        });
+        data = await res.json();
+        if (!res.ok) {
+          setResult(last ?? failure);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        setResult(last ?? failure);
+        setLoading(false);
+        return;
+      }
+
+      if (data.status === "failed" && pass === 0) {
+        setResult(data);
+        setLoading(false);
+        return;
+      }
+
+      imported += data.imported ?? 0;
+      unchanged += data.unchanged ?? 0;
+      failed += data.failed ?? 0;
+      total += data.total ?? 0;
+      last = {
+        ...data,
+        imported,
+        unchanged,
+        failed,
+        total,
+        status: data.partial ? "partial" : data.status,
+      };
+
+      if (!data.partial) break;
+
+      setProgress({ read: total, left: data.remaining ?? 0 });
+      // Nothing new came back, so another identical pass won't help.
+      if ((data.total ?? 0) === 0) break;
     }
+
+    setProgress(null);
+    setResult(last ?? failure);
     setLoading(false);
   }
 
@@ -55,7 +119,11 @@ export default function ImportRunner({
           className="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-70"
           style={{ background: "var(--gradient-brand)" }}
         >
-          {loading ? "جاري الاستيراد..." : "بدء الاستيراد"}
+          {loading
+            ? progress
+              ? `جاري الاستيراد... قرأنا ${progress.read}، باقي ${progress.left}`
+              : "جاري الاستيراد..."
+            : "بدء الاستيراد"}
         </button>
       ) : result.status === "failed" ? (
         <p className="rounded-lg bg-red-50 px-3 py-3 text-sm leading-6 text-red-700">
@@ -77,6 +145,12 @@ export default function ImportRunner({
           تم استيراد {result.imported} منتج جديد/محدَّث، {result.unchanged} بدون
           تغيير من أصل {result.total}
           {result.failed > 0 ? `، وتعذّر حفظ ${result.failed}.` : "."}
+          {result.partial && result.remaining ? (
+            <span className="mt-2 block text-xs">
+              بقي {result.remaining} صفحة منتج ما وصلناها في هالجولة — اضغط «بدء
+              الاستيراد» مرة ثانية ويكمل من عندها.
+            </span>
+          ) : null}
         </p>
       )}
 

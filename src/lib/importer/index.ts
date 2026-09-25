@@ -2,9 +2,9 @@ import "server-only";
 import { assertSafeImportUrl } from "./ssrf";
 import { ShopifyAdapter } from "./adapters/shopify";
 import { StorefrontAdapter } from "./adapters/storefront";
-import type { ExtractedProduct, StoreImporter } from "./types";
+import type { ExtractedProduct, ImportOptions, StoreImporter } from "./types";
 
-export type { ExtractedProduct } from "./types";
+export type { ExtractedProduct, ImportOptions } from "./types";
 
 /**
  * Order matters.
@@ -26,9 +26,18 @@ export type ImportOutcome = {
   products: ExtractedProduct[];
   adapterUsed: string | null;
   attempts: { adapter: string; reason: string }[];
+  /** The crawl ran out of budget before reading every product page. */
+  partial?: boolean;
+  /** Product pages left unread when it stopped. */
+  remaining?: number;
+  /** The store rate-limited us, so the run was paced down. */
+  rateLimited?: boolean;
 };
 
-export async function importFromUrl(rawUrl: string): Promise<ImportOutcome> {
+export async function importFromUrl(
+  rawUrl: string,
+  options: ImportOptions = {},
+): Promise<ImportOutcome> {
   const safety = await assertSafeImportUrl(rawUrl);
   if (!safety.safe) {
     return {
@@ -45,9 +54,17 @@ export async function importFromUrl(rawUrl: string): Promise<ImportOutcome> {
     if (!adapter.canHandle(safety.url)) continue;
 
     try {
-      const result = await adapter.extract(safety.url);
+      const result = await adapter.extract(safety.url, options);
       if (result.ok && result.products.length > 0) {
-        return { ok: true, products: result.products, adapterUsed: adapter.name, attempts };
+        return {
+          ok: true,
+          products: result.products,
+          adapterUsed: adapter.name,
+          attempts,
+          partial: result.partial ?? false,
+          remaining: result.remaining ?? 0,
+          rateLimited: result.rateLimited ?? false,
+        };
       }
       attempts.push({
         adapter: adapter.name,

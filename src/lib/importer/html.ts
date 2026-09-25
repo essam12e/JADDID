@@ -13,7 +13,10 @@ export const MAX_HTML_BYTES = 3_000_000;
 export async function fetchText(
   url: string | URL,
   accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-): Promise<{ ok: true; text: string; finalUrl: string } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; text: string; finalUrl: string }
+  | { ok: false; reason: string; status?: number; retryAfterMs?: number }
+> {
   let response: Response;
   try {
     response = await safeFetch(url.toString(), {
@@ -33,7 +36,23 @@ export async function fetchText(
   }
 
   if (!response.ok) {
-    return { ok: false, reason: `تعذّر تحميل الصفحة (HTTP ${response.status}).` };
+    // 429 is not a failure, it is a request to slow down — the caller
+    // backs off and comes back rather than burning the rest of the
+    // catalogue against a closed door.
+    // `Number(null)` is 0, so an absent header must be ruled out before
+    // the value is read — otherwise every 429 looks like "retry now".
+    const header = response.headers.get("retry-after");
+    const seconds = header == null ? null : Number(header);
+    return {
+      ok: false,
+      reason:
+        response.status === 429
+          ? "المتجر طلب منّا نبطّئ (HTTP 429)."
+          : `تعذّر تحميل الصفحة (HTTP ${response.status}).`,
+      status: response.status,
+      retryAfterMs:
+        seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined,
+    };
   }
 
   const declared = Number(response.headers.get("content-length") ?? 0);
