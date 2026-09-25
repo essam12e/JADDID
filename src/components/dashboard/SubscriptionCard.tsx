@@ -90,7 +90,7 @@ export default function SubscriptionCard({ account }: { account: AccountOverview
       </div>
 
       {started || expires ? (
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {started ? (
             <div className="rounded-xl bg-[var(--jaddid-surface)] px-3 py-2.5">
               <p className="text-[11px] text-slate-500">بداية الاشتراك</p>

@@ -108,7 +108,7 @@ export default async function AdminOrganizationDetailPage({
         </span>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
         <StatCard label="المتاجر" value={stores?.length ?? 0} />
         <StatCard label="الأعضاء" value={members?.length ?? 0} />
         <StatCard label="العملاء" value={customersCount ?? 0} />

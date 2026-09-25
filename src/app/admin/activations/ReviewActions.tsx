@@ -80,7 +80,7 @@ export default function ReviewActions({
       <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
         {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold text-emerald-900">الباقة</span>
             <select

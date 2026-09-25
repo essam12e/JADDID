@@ -56,7 +56,7 @@ export default async function SubscriptionPage() {
       </div>
 
       {started || expires ? (
-        <div className="mb-6 grid gap-3 sm:grid-cols-2">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {started ? (
             <div className="rounded-xl bg-[var(--jaddid-surface)] px-4 py-3">
               <p className="text-[11px] text-slate-500">بداية الاشتراك</p>
@@ -77,7 +77,7 @@ export default async function SubscriptionPage() {
           تعذّر تحميل الباقات حاليًا. حاول تحديث الصفحة.
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {plans.map((plan) => {
             const isCurrent = plan.slug === account.planSlug;
             return (

@@ -165,7 +165,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-[var(--jaddid-border)] bg-white p-5 lg:col-span-2">
           <h2 className="mb-4 text-sm font-bold text-[var(--jaddid-navy)]">الإيرادات (آخر 6 أشهر)</h2>
           <RevenueChart data={revenueByMonth} />
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-[var(--jaddid-border)] bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-bold text-[var(--jaddid-navy)]">يحتاج إجراء اليوم</h2>

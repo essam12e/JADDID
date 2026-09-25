@@ -128,7 +128,7 @@ export default async function ProductsPage() {
           actionLabel="إضافة منتج"
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((product: ProductRow) => {
             const stat = statsByProduct.get(product.id);
             return (
