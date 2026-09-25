@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getAccountOverviewCached } from "@/lib/account.server";
 import { getPublicPlans } from "@/lib/plans";
 import { whatsappPlanChangeUrl } from "@/lib/contact";
+import ChoosePlanButton from "./ChoosePlanButton";
 
 export const metadata: Metadata = { title: "الباقات" };
 
@@ -119,20 +120,16 @@ export default async function SubscriptionPage() {
                     مشترك فيها
                   </button>
                 ) : (
-                  <a
-                    href={whatsappPlanChangeUrl({
+                  <ChoosePlanButton
+                    planId={plan.id}
+                    planName={plan.name}
+                    whatsappUrl={whatsappPlanChangeUrl({
                       planName: plan.name,
                       organizationName: account.organizationName,
                       accountNumber: account.accountNumber,
                       currentPlanName: account.planName,
                     })}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-5 block rounded-xl px-4 py-2.5 text-center text-xs font-bold text-white"
-                    style={{ background: "var(--gradient-brand)" }}
-                  >
-                    اختر هذي الباقة
-                  </a>
+                  />
                 )}
               </div>
             );

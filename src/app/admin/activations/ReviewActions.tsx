@@ -24,10 +24,14 @@ export default function ReviewActions({
   requestId,
   plans,
   currentPlanId,
+  isUpgrade = false,
 }: {
   requestId: string;
   plans: ReviewPlan[];
   currentPlanId?: string | null;
+  /** A plan change, not a first activation — the wording differs, and
+   *  rejecting one must never read like locking the account. */
+  isUpgrade?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
@@ -124,7 +128,7 @@ export default function ReviewActions({
             onClick={() => review("approved")}
             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
           >
-            {busy ? "جارٍ التفعيل..." : "تأكيد الموافقة والتفعيل"}
+            {busy ? "جارٍ الحفظ..." : isUpgrade ? "تأكيد الترقية" : "تأكيد الموافقة والتفعيل"}
           </button>
           <button
             type="button"
@@ -146,7 +150,7 @@ export default function ReviewActions({
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="سبب الرفض (اختياري، يظهر للمؤسسة)"
+          placeholder={isUpgrade ? "سبب عدم الموافقة (اختياري، يظهر للتاجر)" : "سبب الرفض (اختياري، يظهر للمؤسسة)"}
           rows={2}
           className="w-full rounded-lg border border-[var(--jaddid-border)] px-3 py-2 text-xs outline-none focus:border-[var(--jaddid-blue)]"
         />
@@ -157,7 +161,7 @@ export default function ReviewActions({
             onClick={() => review("rejected")}
             className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-60"
           >
-            تأكيد الرفض
+            {isUpgrade ? "تأكيد عدم الموافقة" : "تأكيد الرفض"}
           </button>
           <button
             type="button"
@@ -180,7 +184,7 @@ export default function ReviewActions({
         onClick={() => setMode("approve")}
         className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-60"
       >
-        الموافقة والتفعيل
+        {isUpgrade ? "الموافقة على الترقية" : "الموافقة والتفعيل"}
       </button>
       <button
         type="button"
@@ -188,7 +192,7 @@ export default function ReviewActions({
         onClick={() => setMode("reject")}
         className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-60"
       >
-        رفض
+        {isUpgrade ? "لا أوافق" : "رفض"}
       </button>
     </div>
   );
