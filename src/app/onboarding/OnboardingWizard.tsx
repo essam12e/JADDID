@@ -45,6 +45,8 @@ export default function OnboardingWizard({
     total: number;
     imported: number;
     unchanged: number;
+    partial?: boolean;
+    remaining?: number;
     failed: number;
     attempts?: { adapter: string; reason: string }[];
   };
@@ -324,6 +326,12 @@ export default function OnboardingWizard({
                   {importResult.failed > 0
                     ? `، وتعذّر استيراد ${importResult.failed}.`
                     : "."}
+                  {importResult.partial && importResult.remaining ? (
+                    <span className="mt-2 block text-xs">
+                      باقي {importResult.remaining} منتج — تقدر تكمل استيرادهم من
+                      لوحة المنتجات بعد ما تخلص الإعداد.
+                    </span>
+                  ) : null}
                 </p>
               )}
 

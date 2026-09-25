@@ -5,8 +5,24 @@ import { importFromUrl } from "@/lib/importer";
 
 export const maxDuration = 60;
 
+/**
+ * How long the crawl may run before it hands back what it has.
+ *
+ * The function is capped at 60s; the database writes and the job
+ * bookkeeping need the rest. A store with hundreds of products is read
+ * across runs, each one skipping the pages already stored.
+ */
+const CRAWL_BUDGET_MS = 40_000;
+
+/** Rows per write. PostgREST handles a few hundred comfortably. */
+const WRITE_CHUNK = 200;
+
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-const RATE_LIMIT_MAX_PER_WINDOW = 3;
+// A large catalogue is read across several passes — the crawl is capped
+// by the function's lifetime and paced by the store's own rate limit —
+// so the window has to allow a continuation to finish. Each pass is
+// itself bounded, so this is still a ceiling on outbound traffic.
+const RATE_LIMIT_MAX_PER_WINDOW = 15;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -77,7 +93,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "تعذّر بدء عملية الاستيراد" }, { status: 500 });
   }
 
-  const outcome = await importFromUrl(sourceUrl);
+  // Read the store's current products once, up front: it tells the crawl
+  // which pages it can skip, and it replaces the per-product SELECT that
+  // used to run inside the write loop.
+  const { data: existingRows } = await supabase
+    .from("products")
+    .select("id, name, price, image_url, description, is_available, source_fingerprint, source_url")
+    .eq("store_id", store.id);
+
+  const byFingerprint = new Map(
+    (existingRows ?? [])
+      .filter((row) => row.source_fingerprint)
+      .map((row) => [row.source_fingerprint as string, row]),
+  );
+  const knownSourceUrls = new Set(
+    (existingRows ?? []).map((row) => row.source_url).filter((url): url is string => !!url),
+  );
+
+  const outcome = await importFromUrl(sourceUrl, {
+    deadline: Date.now() + CRAWL_BUDGET_MS,
+    knownSourceUrls,
+  });
 
   if (!outcome.ok) {
     const reason = outcome.attempts.map((a) => `${a.adapter}: ${a.reason}`).join(" | ");
@@ -101,88 +137,111 @@ export async function POST(request: Request) {
     });
   }
 
-  let imported = 0;
+  // One product reachable from two URLs would otherwise hit the same
+  // conflict target twice in one statement, which Postgres rejects.
+  const products = [...new Map(outcome.products.map((p) => [p.fingerprint, p])).values()];
+
+  type InsertRow = {
+    organization_id: string;
+    store_id: string;
+    name: string;
+    description: string | null;
+    image_url: string | null;
+    price: number | null;
+    currency: string;
+    source_url: string;
+    renewal_url: string;
+    source_fingerprint: string;
+    is_available: boolean | null;
+  };
+
+  const toInsert: InsertRow[] = [];
+  const toUpdate: (InsertRow & { id: string })[] = [];
   let unchanged = 0;
-  let failed = 0;
 
-  for (const product of outcome.products) {
-    try {
-      const { data: existing } = await supabase
-        .from("products")
-        .select("id, name, price, image_url, description, is_available")
-        .eq("store_id", store.id)
-        .eq("source_fingerprint", product.fingerprint)
-        .maybeSingle();
+  for (const product of products) {
+    const row: InsertRow = {
+      organization_id: store.organization_id,
+      store_id: store.id,
+      name: product.name,
+      description: product.description ?? null,
+      image_url: product.imageUrl ?? null,
+      price: product.price ?? null,
+      currency: product.currency ?? "SAR",
+      source_url: product.sourceUrl,
+      renewal_url: product.sourceUrl,
+      source_fingerprint: product.fingerprint,
+      is_available: product.isAvailable ?? null,
+    };
 
-      if (!existing) {
-        const { error: insertError } = await supabase.from("products").insert({
-          organization_id: store.organization_id,
-          store_id: store.id,
-          name: product.name,
-          description: product.description,
-          image_url: product.imageUrl,
-          price: product.price,
-          currency: product.currency ?? "SAR",
-          source_url: product.sourceUrl,
-          renewal_url: product.sourceUrl,
-          source_fingerprint: product.fingerprint,
-          is_available: product.isAvailable,
-        });
-        if (insertError) throw insertError;
-        imported++;
-        continue;
-      }
-
-      const changed =
-        existing.name !== product.name ||
-        Number(existing.price) !== product.price ||
-        existing.image_url !== product.imageUrl ||
-        existing.description !== product.description ||
-        existing.is_available !== product.isAvailable;
-
-      if (!changed) {
-        unchanged++;
-        continue;
-      }
-
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({
-          name: product.name,
-          description: product.description,
-          image_url: product.imageUrl,
-          price: product.price,
-          is_available: product.isAvailable,
-        })
-        .eq("id", existing.id);
-      if (updateError) throw updateError;
-      imported++;
-    } catch {
-      failed++;
+    const existing = byFingerprint.get(product.fingerprint);
+    if (!existing) {
+      toInsert.push(row);
+      continue;
     }
+
+    const changed =
+      existing.name !== row.name ||
+      Number(existing.price) !== row.price ||
+      existing.image_url !== row.image_url ||
+      existing.description !== row.description ||
+      existing.is_available !== row.is_available;
+
+    if (changed) toUpdate.push({ ...row, id: existing.id });
+    else unchanged++;
   }
 
-  const finalStatus = failed === 0 ? "completed" : imported + unchanged > 0 ? "partial" : "failed";
+  let imported = 0;
+  let failed = 0;
+
+  for (let i = 0; i < toInsert.length; i += WRITE_CHUNK) {
+    const chunk = toInsert.slice(i, i + WRITE_CHUNK);
+    const { error } = await supabase.from("products").insert(chunk);
+    if (error) failed += chunk.length;
+    else imported += chunk.length;
+  }
+
+  // Upsert on the primary key: every row here already exists, so this is
+  // an update — batched, instead of one round trip per product.
+  for (let i = 0; i < toUpdate.length; i += WRITE_CHUNK) {
+    const chunk = toUpdate.slice(i, i + WRITE_CHUNK);
+    const { error } = await supabase.from("products").upsert(chunk);
+    if (error) failed += chunk.length;
+    else imported += chunk.length;
+  }
+
+  const finalStatus =
+    failed > 0 || outcome.partial
+      ? imported + unchanged > 0
+        ? "partial"
+        : "failed"
+      : "completed";
 
   await supabase
     .from("import_jobs")
     .update({
       status: finalStatus,
-      total_count: outcome.products.length,
+      total_count: products.length,
       imported_count: imported,
       failed_count: failed,
       error_summary:
-        failed > 0 ? `${failed} من ${outcome.products.length} منتجًا تعذّر حفظها` : null,
+        failed > 0
+          ? `${failed} من ${products.length} منتجًا تعذّر حفظها`
+          : outcome.partial
+            ? `بقي ${outcome.remaining} صفحة منتج — شغّل الاستيراد مرة ثانية عشان يكمل`
+            : null,
     })
     .eq("id", job.id);
 
   return NextResponse.json({
     jobId: job.id,
     status: finalStatus,
-    total: outcome.products.length,
+    total: products.length,
     imported,
     unchanged,
     failed,
     adapterUsed: outcome.adapterUsed,
+    partial: outcome.partial ?? false,
+    remaining: outcome.remaining ?? 0,
   });
 }
