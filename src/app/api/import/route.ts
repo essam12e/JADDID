@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { startImportSchema } from "@/lib/validations/import";
+import { startImportSchema, DEFAULT_IMPORT_LIMIT } from "@/lib/validations/import";
 import { importFromUrl } from "@/lib/importer";
 
 export const maxDuration = 60;
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     );
   }
   const { storeId, sourceUrl } = parsed.data;
+  const limit = parsed.data.limit ?? DEFAULT_IMPORT_LIMIT;
 
   // RLS-scoped: this returns null if the caller isn't a member of the
   // org that owns this store, which we treat as "not found" rather than
@@ -113,6 +114,10 @@ export async function POST(request: Request) {
   const outcome = await importFromUrl(sourceUrl, {
     deadline: Date.now() + CRAWL_BUDGET_MS,
     knownSourceUrls,
+    // Reading more pages than the merchant asked for is wasted traffic
+    // against their store, so the crawl is capped too, not just the
+    // number of rows we keep.
+    maxPages: limit,
   });
 
   if (!outcome.ok) {
@@ -146,7 +151,10 @@ export async function POST(request: Request) {
 
   // One product reachable from two URLs would otherwise hit the same
   // conflict target twice in one statement, which Postgres rejects.
-  const products = [...new Map(outcome.products.map((p) => [p.fingerprint, p])).values()];
+  const products = [...new Map(outcome.products.map((p) => [p.fingerprint, p])).values()].slice(
+    0,
+    limit,
+  );
 
   type InsertRow = {
     organization_id: string;

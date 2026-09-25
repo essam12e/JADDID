@@ -3,6 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  DEFAULT_IMPORT_LIMIT,
+  IMPORT_LIMIT_CHOICES,
+  MAX_IMPORT_LIMIT,
+} from "@/lib/validations/import";
 
 type ImportResult = {
   status: "completed" | "partial" | "failed";
@@ -28,6 +33,7 @@ export default function ImportRunner({
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ read: number; left: number } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [limit, setLimit] = useState<number>(DEFAULT_IMPORT_LIMIT);
 
   /**
    * Imports the whole catalogue, however many passes that takes.
@@ -67,7 +73,7 @@ export default function ImportRunner({
         const res = await fetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ storeId, sourceUrl: storeUrl }),
+          body: JSON.stringify({ storeId, sourceUrl: storeUrl, limit }),
         });
         data = await res.json();
         if (!res.ok) {
@@ -94,6 +100,8 @@ export default function ImportRunner({
       last = { ...data, imported, unchanged, failed, total };
 
       if (!data.partial) break;
+      // The merchant asked for this many; stop once they have them.
+      if (total >= limit) break;
 
       setProgress({ read: total, left: data.remaining ?? 0 });
       // Nothing new came back, so another identical pass won't help.
@@ -110,7 +118,29 @@ export default function ImportRunner({
   return (
     <div className="space-y-4">
       {!result ? (
-        <button
+        <>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">
+              كم منتجًا تبغى تستورد؟
+            </span>
+            <select
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+              disabled={loading}
+              className="w-full rounded-xl border border-[var(--jaddid-border)] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[var(--jaddid-blue)] focus:ring-2 focus:ring-[var(--jaddid-blue)]/20"
+            >
+              {IMPORT_LIMIT_CHOICES.map((choice) => (
+                <option key={choice} value={choice}>
+                  {choice === MAX_IMPORT_LIMIT ? "كل المنتجات" : `${choice} منتج`}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              تقدر تعيد الاستيراد لاحقًا وياخذ اللي بقي — ما يعيد اللي دخل.
+            </span>
+          </label>
+
+          <button
           type="button"
           onClick={run}
           disabled={loading}
@@ -122,7 +152,8 @@ export default function ImportRunner({
               ? `جاري الاستيراد... قرأنا ${progress.read}، باقي ${progress.left}`
               : "جاري الاستيراد..."
             : "بدء الاستيراد"}
-        </button>
+          </button>
+        </>
       ) : result.status === "failed" ? (
         <p className="rounded-lg bg-red-50 px-3 py-3 text-sm leading-6 text-red-700">
           تعذّر الاستيراد.

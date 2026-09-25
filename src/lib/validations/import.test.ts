@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { startImportSchema } from "./import";
+import { startImportSchema, IMPORT_LIMIT_CHOICES, MAX_IMPORT_LIMIT } from "./import";
 
 describe("startImportSchema", () => {
   const validStoreId = "11111111-1111-4111-8111-111111111111";
@@ -37,5 +37,30 @@ describe("startImportSchema", () => {
       startImportSchema.safeParse({ storeId: validStoreId, sourceUrl: "http://169.254.169.254/x.json" })
         .success,
     ).toBe(true);
+  });
+});
+
+describe("import limit", () => {
+  const base = {
+    storeId: "6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+    sourceUrl: "https://shop.example.sa/",
+  };
+
+  it("is optional — the server picks a default", () => {
+    const parsed = startImportSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.limit).toBeUndefined();
+  });
+
+  it("accepts every choice the import screen offers", () => {
+    for (const limit of IMPORT_LIMIT_CHOICES) {
+      expect(startImportSchema.safeParse({ ...base, limit }).success, String(limit)).toBe(true);
+    }
+  });
+
+  it("refuses a limit above the ceiling, a fraction, or zero", () => {
+    for (const limit of [MAX_IMPORT_LIMIT + 1, 2.5, 0, -10]) {
+      expect(startImportSchema.safeParse({ ...base, limit }).success, String(limit)).toBe(false);
+    }
   });
 });
