@@ -11,6 +11,8 @@ import {
   formatDate,
   formatMoney,
   TEMPLATES,
+  emailChangeConfirmEmail,
+  emailChangeNoticeEmail,
 } from "./templates";
 import { esc, siteUrl } from "./layout";
 
@@ -179,6 +181,8 @@ describe("template registry", () => {
         "welcome",
         "confirm_signup",
         "reset_password",
+        "email_change_confirm",
+        "email_change_notice",
       ].sort(),
     );
   });
@@ -260,5 +264,53 @@ describe("auth emails the app sends instead of Supabase", () => {
   it("omit the code row entirely when none was issued", () => {
     const without = confirmSignupEmail({ actionLink: "https://x.test/a", code: null });
     expect(without.html).not.toContain("أو استخدم هذا الرمز");
+  });
+});
+
+describe("email change", () => {
+  const link = "https://j-addid.com/auth/callback?code=abc";
+
+  it("asks the new address to confirm, in Arabic, with the logo", () => {
+    const mail = emailChangeConfirmEmail({
+      name: "عصام",
+      newEmail: "new@example.com",
+      actionLink: link,
+      code: "123456",
+    });
+
+    expect(mail.subject).toContain("أكّد بريدك الجديد");
+    expect(mail.html).toContain("يا عصام");
+    expect(mail.html).toContain(link);
+    expect(mail.html).toContain("new@example.com");
+    expect(mail.html).toContain("123456");
+    // The logo comes from the shared layout; if it ever stops being
+    // rendered these emails silently become plain text.
+    expect(mail.html).toMatch(/<img[^>]+(logo|jaddid)/i);
+    expect(mail.text).toContain(link);
+  });
+
+  it("tells the current address what was requested, and how to react", () => {
+    const mail = emailChangeNoticeEmail({ name: null, newEmail: "new@example.com" });
+
+    expect(mail.subject).toContain("طلب تغيير البريد");
+    expect(mail.html).toContain("new@example.com");
+    expect(mail.html).toContain("غيّر كلمة مرورك فورًا");
+    // No link when Supabase does not require the old address to agree —
+    // a button that does nothing is worse than no button.
+    expect(mail.html).not.toContain("أوافق على التغيير");
+  });
+
+  it("gives the current address a button when its approval is required", () => {
+    const mail = emailChangeNoticeEmail({
+      name: "عصام",
+      newEmail: "new@example.com",
+      actionLink: link,
+      code: "654321",
+    });
+
+    expect(mail.subject).toContain("وافق على تغيير بريدك");
+    expect(mail.html).toContain("أوافق على التغيير");
+    expect(mail.html).toContain(link);
+    expect(mail.html).toContain("654321");
   });
 });

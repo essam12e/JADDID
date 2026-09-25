@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
+import ChangeEmailForm from "./ChangeEmailForm";
 
 export default async function ProfileSettingsPage() {
   const supabase = await createClient();
@@ -16,9 +17,9 @@ export default async function ProfileSettingsPage() {
     .maybeSingle();
 
   return (
-    <ProfileForm
-      email={user.email ?? ""}
-      initialFullName={profile?.full_name ?? ""}
-    />
+    <div className="space-y-6">
+      <ProfileForm email={user.email ?? ""} initialFullName={profile?.full_name ?? ""} />
+      <ChangeEmailForm currentEmail={user.email ?? ""} />
+    </div>
   );
 }
