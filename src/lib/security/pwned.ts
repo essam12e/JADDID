@@ -10,12 +10,13 @@
  * device — which is actually stronger than the paid feature, where the
  * password reaches Supabase's server first.
  *
- * Deliberately client-side: passwords in this app go straight from the
- * browser to Supabase Auth and never touch our server, so there is no
- * server-side moment to hook. That means a determined user could bypass
- * this — it is a guard rail that stops people reusing `123456789`, not a
- * security boundary. Real protection still comes from Supabase's own
- * hashing and rate limiting.
+ * Runs in the browser so the password never leaves the device — and
+ * again on the server for signup, which is the one flow whose password
+ * does pass through our API. A check that only runs in the browser is
+ * advice, not a control: anyone can POST to the route directly. Password
+ * changes still go straight from the browser to Supabase Auth, so there
+ * the check remains a guard rail, backed by Supabase's own hashing and
+ * rate limiting.
  */
 
 const HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/";

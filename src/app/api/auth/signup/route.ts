@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { signupSchema } from "@/lib/validations/auth";
 import { sendAuthEmail } from "@/lib/auth/mailLinks";
+import { checkPasswordPwned, pwnedMessage } from "@/lib/security/pwned";
 
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
@@ -27,6 +28,15 @@ export async function POST(request: Request) {
       { error: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" },
       { status: 400 },
     );
+  }
+
+  // The browser checks this too, but a check that only runs in the
+  // browser is advice: this route accepts a password directly. If HIBP
+  // is unreachable the signup proceeds — an outage of someone else's
+  // service must not stop people creating accounts.
+  const breach = pwnedMessage(await checkPasswordPwned(parsed.data.password));
+  if (breach) {
+    return NextResponse.json({ error: breach }, { status: 400 });
   }
 
   try {

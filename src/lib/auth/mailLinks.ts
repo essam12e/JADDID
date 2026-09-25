@@ -14,10 +14,29 @@ import { drainOutbox } from "@/lib/email/outbox";
  */
 
 /** Only ever redirect back to our own origin — never a caller-supplied host. */
+const PRODUCTION_ORIGIN = "https://j-addid.com";
+
 export function safeOrigin(requestUrl: string): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL;
   if (configured) return configured.replace(/\/+$/, "");
-  return new URL(requestUrl).origin;
+
+  // Falling back to the request's own origin means the Host header
+  // decides where a confirmation link points. A forged Host on an
+  // unauthenticated signup would mail the victim a link to the
+  // attacker's site, carrying a real token. Every other part of the app
+  // falls back to the production origin; so does this.
+  const origin = new URL(requestUrl).origin;
+  return isLocalOrigin(origin) ? origin : PRODUCTION_ORIGIN;
+}
+
+/** Keeps local development working without a configured app URL. */
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
 }
 
 /**

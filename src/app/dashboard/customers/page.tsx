@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { escapeSearchTerm } from "@/lib/search";
 import {
   computeCustomerValueStatus,
   computeSubscriptionStatus,
@@ -50,8 +51,11 @@ export default async function CustomersPage({
     .eq("is_archived", false)
     .order("created_at", { ascending: false });
 
-  if (q && q.trim()) {
-    query = query.or(`name.ilike.%${q.trim()}%,phone.ilike.%${q.trim()}%`);
+  // Never interpolate a raw term here: or() is an expression, not a
+  // parameter. See escapeSearchTerm.
+  const term = escapeSearchTerm(q ?? "");
+  if (term) {
+    query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%`);
   }
 
   const { data: customers } = await query;
