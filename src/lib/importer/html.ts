@@ -13,6 +13,31 @@ export const MAX_HTML_BYTES = 3_000_000;
 export async function fetchText(
   url: string | URL,
   accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  /**
+   * How many times to wait and ask again when the store answers 429.
+   *
+   * The crawl paces itself, but the *first* request has no such luxury:
+   * if the store happens to be throttling right then, the whole import
+   * used to die on it. A couple of polite retries turn "تعذّر الاستيراد"
+   * into a slightly slower import.
+   */
+  retriesOn429 = 0,
+): Promise<
+  | { ok: true; text: string; finalUrl: string }
+  | { ok: false; reason: string; status?: number; retryAfterMs?: number }
+> {
+  for (let attempt = 0; ; attempt++) {
+    const result = await fetchOnce(url, accept);
+    if (result.ok || result.status !== 429 || attempt >= retriesOn429) return result;
+
+    const wait = Math.min(result.retryAfterMs ?? 2_000, 5_000);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(wait, 500)));
+  }
+}
+
+async function fetchOnce(
+  url: string | URL,
+  accept: string,
 ): Promise<
   | { ok: true; text: string; finalUrl: string }
   | { ok: false; reason: string; status?: number; retryAfterMs?: number }

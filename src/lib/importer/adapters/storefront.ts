@@ -43,9 +43,9 @@ const MAX_PRODUCT_PAGES = 1500;
  * refused are retried rather than counted as failures.
  */
 const BATCH_SIZE = 6;
-const START_RATE_PER_SECOND = 5;
+const START_RATE_PER_SECOND = 3;
 const MIN_RATE_PER_SECOND = 1;
-const MAX_RATE_PER_SECOND = 12;
+const MAX_RATE_PER_SECOND = 5;
 const BASE_COOLDOWN_MS = 1_500;
 const MIN_COOLDOWN_MS = 200;
 const MAX_COOLDOWN_MS = 8_000;
@@ -186,10 +186,21 @@ export class StorefrontAdapter implements StoreImporter {
     const maxPages = Math.min(options.maxPages ?? MAX_PRODUCT_PAGES, MAX_PRODUCT_PAGES);
     const withinBudget = () => options.deadline == null || Date.now() < options.deadline;
 
-    const page = await fetchText(url);
-    if (!page.ok) return { ok: false, reason: page.reason };
+    // Two retries: a store that is throttling right now usually lets the
+    // next request through a second later, and losing the whole import to
+    // one 429 is not acceptable.
+    const page = await fetchText(url, undefined, 2);
 
-    const platform: Platform = detectPlatform(page.text, url.toString());
+    // A refused landing page is not the end of the import. The sitemap
+    // lives at a fixed address and is often served when the storefront
+    // is not, so the crawl still has somewhere to start.
+    if (!page.ok && page.status !== 429) {
+      return { ok: false, reason: page.reason };
+    }
+
+    const platform: Platform = page.ok
+      ? detectPlatform(page.text, url.toString())
+      : "unknown";
 
     // 1. The page itself — it may already be a product page.
     //
@@ -198,7 +209,7 @@ export class StorefrontAdapter implements StoreImporter {
     // row: on a real store this read the shop's name and the VAT number
     // out of the footer, called it a product, and never went looking for
     // the 619 actual ones.
-    if (rankProductUrl(page.finalUrl) !== "no") {
+    if (page.ok && rankProductUrl(page.finalUrl) !== "no") {
       const direct = extractFromHtml(page.text, page.finalUrl);
       if (direct.length > 0) {
         return { ok: true, products: dedupe(direct) };
@@ -216,7 +227,7 @@ export class StorefrontAdapter implements StoreImporter {
     // budget: the reordering below can only move unseen pages to the
     // front if it was allowed to see them in the first place.
     let productUrls = await productUrlsFromSitemaps(origin, MAX_PRODUCT_PAGES);
-    if (productUrls.length === 0) {
+    if (productUrls.length === 0 && page.ok) {
       productUrls = productLinksFromHtml(page.text, page.finalUrl, MAX_PRODUCT_PAGES);
     }
 
@@ -232,6 +243,15 @@ export class StorefrontAdapter implements StoreImporter {
     }
 
     if (productUrls.length === 0) {
+      // Say the one thing the merchant can act on.
+      if (!page.ok) {
+        return {
+          ok: false,
+          reason:
+            "المتجر رفض طلباتنا مؤقتًا (كثرة طلبات). انتظر دقيقة تقريبًا وجرّب مرة ثانية — " +
+            "المنتجات اللي دخلت قبل تبقى محفوظة.",
+        };
+      }
       const label = PLATFORM_LABELS[platform];
       return {
         ok: false,

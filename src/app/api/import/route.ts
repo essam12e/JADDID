@@ -116,6 +116,12 @@ export async function POST(request: Request) {
   });
 
   if (!outcome.ok) {
+    // The general adapter is the one that actually tried to read the
+    // store; "this isn't Shopify" is bookkeeping, not an explanation.
+    const userReason =
+      outcome.attempts.find((a) => a.adapter === "storefront")?.reason ??
+      outcome.attempts[0]?.reason ??
+      "تعذّر الاستيراد من هذا الرابط.";
     const reason = outcome.attempts.map((a) => `${a.adapter}: ${a.reason}`).join(" | ");
     await supabase
       .from("import_jobs")
@@ -133,6 +139,7 @@ export async function POST(request: Request) {
       imported: 0,
       unchanged: 0,
       failed: 0,
+      reason: userReason,
       attempts: outcome.attempts,
     });
   }
@@ -210,12 +217,11 @@ export async function POST(request: Request) {
     else imported += chunk.length;
   }
 
+  // Products that were read are saved and counted, whether or not the
+  // crawl got through the whole catalogue. "More to read" is progress,
+  // not failure — only rows we could not store are.
   const finalStatus =
-    failed > 0 || outcome.partial
-      ? imported + unchanged > 0
-        ? "partial"
-        : "failed"
-      : "completed";
+    failed > 0 ? (imported + unchanged > 0 ? "partial" : "failed") : "completed";
 
   await supabase
     .from("import_jobs")

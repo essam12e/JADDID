@@ -10,6 +10,7 @@ type ImportResult = {
   imported: number;
   unchanged: number;
   failed: number;
+  reason?: string;
   attempts?: { adapter: string; reason: string }[];
   /** The crawl stopped on its time budget with pages still queued. */
   partial?: boolean;
@@ -90,14 +91,7 @@ export default function ImportRunner({
       unchanged += data.unchanged ?? 0;
       failed += data.failed ?? 0;
       total += data.total ?? 0;
-      last = {
-        ...data,
-        imported,
-        unchanged,
-        failed,
-        total,
-        status: data.partial ? "partial" : data.status,
-      };
+      last = { ...data, imported, unchanged, failed, total };
 
       if (!data.partial) break;
 
@@ -109,6 +103,8 @@ export default function ImportRunner({
     setProgress(null);
     setResult(last ?? failure);
     setLoading(false);
+    // Whatever came in is already stored; show it on the products page.
+    router.refresh();
   }
 
   return (
@@ -130,10 +126,8 @@ export default function ImportRunner({
       ) : result.status === "failed" ? (
         <p className="rounded-lg bg-red-50 px-3 py-3 text-sm leading-6 text-red-700">
           تعذّر الاستيراد.
-          {result.attempts && result.attempts.length > 0 ? (
-            <span className="mt-2 block text-xs text-red-600" dir="ltr">
-              {result.attempts.map((a) => a.reason).join(" — ")}
-            </span>
+          {result.reason ? (
+            <span className="mt-2 block text-xs text-red-600">{result.reason}</span>
           ) : null}
         </p>
       ) : (
