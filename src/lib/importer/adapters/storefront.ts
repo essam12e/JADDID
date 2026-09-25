@@ -1,6 +1,6 @@
 import "server-only";
 import { fetchText, fetchJson, parsePrice } from "../html";
-import { extractFromHtml, dedupe } from "../extract";
+import { extractFromHtml, dedupe, describePage, type PageEvidence } from "../extract";
 import {
   detectPlatform,
   isSitemapIndex,
@@ -30,6 +30,22 @@ type WooProduct = {
   is_in_stock?: boolean;
   categories?: { name?: string }[];
 };
+
+/** Compact, copy-pasteable account of what the pages contained. */
+function summarise(evidence: PageEvidence[], blocked: string[]): string {
+  if (evidence.length === 0) {
+    const why = blocked[0] ? ` (${blocked[0]})` : "";
+    return `تشخيص: ما قدرنا نفتح أي صفحة منتج${why}.`;
+  }
+  const parts = evidence.map(
+    (e, i) =>
+      `ص${i + 1}: ${Math.round(e.bytes / 1024)}ك · ld+json ${e.jsonLdBlocks}` +
+      ` · microdata ${e.microdataBlocks} · json ${e.jsonIslands}` +
+      ` · og:type ${e.ogType ?? "—"}`,
+  );
+  const blockedNote = blocked.length > 0 ? ` · محجوبة ${blocked.length}` : "";
+  return `تشخيص [${parts.join(" | ")}${blockedNote}]`;
+}
 
 async function inBatches<T, R>(
   items: T[],
@@ -165,9 +181,24 @@ export class StorefrontAdapter implements StoreImporter {
       };
     }
 
+    const evidence: PageEvidence[] = [];
+    const blocked: string[] = [];
+    let opened = 0;
     const pages = await inBatches(productUrls.slice(0, MAX_PRODUCT_PAGES), CONCURRENCY, async (link) => {
       const result = await fetchText(link);
-      if (!result.ok) return [] as ExtractedProduct[];
+      if (!result.ok) {
+        // A store that answers 403 to every product page is a different
+        // problem from one whose pages we simply can't read, and the
+        // message has to tell the two apart.
+        if (blocked.length < 3) blocked.push(result.reason);
+        return [] as ExtractedProduct[];
+      }
+      opened += 1;
+      // Record what the page held even when extraction comes up empty —
+      // this importer can't be exercised against a live shop from the
+      // build environment, so a failure has to explain itself or the
+      // next fix is another guess.
+      if (evidence.length < 3) evidence.push(describePage(result.text, result.finalUrl));
       return extractFromHtml(result.text, result.finalUrl);
     });
 
@@ -175,7 +206,11 @@ export class StorefrontAdapter implements StoreImporter {
     if (products.length === 0) {
       return {
         ok: false,
-        reason: `فتحنا ${productUrls.length} صفحة منتج من المتجر لكن ما قدرنا نقرأ بياناتها. تقدر تضيف المنتجات يدويًا.`,
+        reason:
+          (opened === 0
+            ? `لقينا ${productUrls.length} صفحة منتج بس المتجر ما سمح لنا نفتحها. `
+            : `فتحنا ${opened} صفحة منتج من المتجر لكن ما قدرنا نقرأ بياناتها. `) +
+          `تقدر تضيف المنتجات يدويًا. — ${summarise(evidence, blocked)}`,
       };
     }
 

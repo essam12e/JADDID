@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { decodeEntities, parsePrice, stripTags } from "./html";
+import { decodeEntities, parsePrice, stripTags, absolute, metaContent } from "./html";
+import { extractVisibleHtml } from "./visible";
+import { extractEmbeddedJson, collectJsonBlobs } from "./embedded";
 import type { ExtractedProduct } from "./types";
 
 /**
@@ -35,15 +37,6 @@ type JsonLdNode = {
 
 function fingerprint(parts: string[]): string {
   return createHash("sha1").update(parts.join(":")).digest("hex");
-}
-
-function absolute(href: string | null | undefined, base: string): string | null {
-  if (!href) return null;
-  try {
-    return new URL(href, base).toString();
-  } catch {
-    return null;
-  }
 }
 
 function isProductNode(node: JsonLdNode): boolean {
@@ -179,21 +172,6 @@ export function extractMicrodata(html: string, pageUrl: string): ExtractedProduc
   return products;
 }
 
-function metaContent(html: string, ...names: string[]): string | null {
-  for (const name of names) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match =
-      html.match(
-        new RegExp(`<meta[^>]*(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']*)["']`, "i"),
-      ) ??
-      html.match(
-        new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*(?:property|name)=["']${escaped}["']`, "i"),
-      );
-    if (match) return decodeEntities(match[1]);
-  }
-  return null;
-}
-
 /**
  * Last resort for a single product page: Open Graph. Only fires when the
  * page actually claims to be a product — an `og:type=website` homepage
@@ -248,12 +226,50 @@ export function dedupe(products: ExtractedProduct[]): ExtractedProduct[] {
  * Everything a single HTML page can yield, best format first. Later
  * formats still run so a page with partial JSON-LD can be completed by
  * its microdata, but duplicates collapse.
+ *
+ * The embedded-JSON pass is what covers framework-rendered storefronts
+ * (Salla, Zid, most Nuxt/Next shops): those ship complete product data
+ * in a JSON island for their own JavaScript while publishing no JSON-LD,
+ * no microdata, and `og:type=website`.
  */
 export function extractFromHtml(html: string, pageUrl: string): ExtractedProduct[] {
   const found = [
     ...extractJsonLd(html, pageUrl),
     ...extractMicrodata(html, pageUrl),
   ];
+  if (found.length === 0) found.push(...extractEmbeddedJson(html, pageUrl));
   if (found.length === 0) found.push(...extractOpenGraph(html, pageUrl));
+  if (found.length === 0) found.push(...extractVisibleHtml(html, pageUrl));
   return dedupe(found).filter((p) => p.name && p.name !== "منتج بدون اسم");
+}
+
+export type PageEvidence = {
+  bytes: number;
+  jsonLdBlocks: number;
+  microdataBlocks: number;
+  jsonIslands: number;
+  ogType: string | null;
+  products: number;
+};
+
+/**
+ * What a page actually contained.
+ *
+ * Exists because this importer cannot be tested against a real store
+ * from the build environment — outbound network is blocked — so when it
+ * fails on a live shop the only way to learn why is to have it say what
+ * it saw. "Opened 5 product pages and read none" is a dead end;
+ * "5 pages, 0 JSON-LD, 0 microdata, 3 JSON islands" names the fix.
+ */
+export function describePage(html: string, pageUrl: string): PageEvidence {
+  return {
+    bytes: html.length,
+    jsonLdBlocks: [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["']/gi)].length,
+    microdataBlocks: [
+      ...html.matchAll(/itemtype=["']https?:\/\/schema\.org\/Product["']/gi),
+    ].length,
+    jsonIslands: collectJsonBlobs(html).length,
+    ogType: metaContent(html, "og:type"),
+    products: extractFromHtml(html, pageUrl).length,
+  };
 }
