@@ -3,10 +3,10 @@ import { fetchText, fetchJson, parsePrice } from "../html";
 import { extractFromHtml, dedupe, describePage, type PageEvidence } from "../extract";
 import {
   detectPlatform,
+  rankedProductUrls,
   isSitemapIndex,
   parseSitemapLocs,
   productLinksFromHtml,
-  looksLikeProductUrl,
   sitemapCandidates,
   PLATFORM_LABELS,
   type Platform,
@@ -15,9 +15,9 @@ import type { AdapterResult, ExtractedProduct, StoreImporter } from "../types";
 import { createHash } from "node:crypto";
 
 /** How many product pages one import is allowed to open. */
-const MAX_PRODUCT_PAGES = 12;
+const MAX_PRODUCT_PAGES = 40;
 /** How many of those to fetch at once — polite to the store, fast enough. */
-const CONCURRENCY = 4;
+const CONCURRENCY = 6;
 
 type WooProduct = {
   id: number;
@@ -107,8 +107,8 @@ async function productUrlsFromSitemaps(origin: string): Promise<string[]> {
     let locs = parseSitemapLocs(result.text);
 
     if (isSitemapIndex(result.text)) {
-      // Prefer the child sitemaps whose names suggest products; otherwise
-      // take the first couple rather than crawling a whole large site.
+      // Prefer child sitemaps whose names suggest products; otherwise take
+      // the first few rather than crawling a whole large site.
       const childSitemaps = locs
         .filter((loc) => /product|item/i.test(loc))
         .concat(locs.filter((loc) => !/product|item/i.test(loc)))
@@ -121,8 +121,8 @@ async function productUrlsFromSitemaps(origin: string): Promise<string[]> {
       locs = children.flat();
     }
 
-    const products = locs.filter(looksLikeProductUrl);
-    if (products.length > 0) return products.slice(0, MAX_PRODUCT_PAGES);
+    const products = rankedProductUrls(locs, MAX_PRODUCT_PAGES);
+    if (products.length > 0) return products;
   }
   return [];
 }

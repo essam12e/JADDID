@@ -11,28 +11,84 @@
  * Pure string functions, no network — the adapter does the fetching.
  */
 
-/** URL shapes used by the platforms merchants in this market actually use. */
+/** URL shapes that say "product" outright. */
 const PRODUCT_PATH_PATTERNS: RegExp[] = [
   /\/products?\/[^/?#]+/i, // Shopify, Zid, many customs
   /\/product\/[^/?#]+/i, // WooCommerce
-  /\/p\d{3,}/i, // Salla (/p123456789)
-  /\/p\/[^/?#]+/i, // short product paths
+  /\/p\d{3,}/i, // Salla's numeric product path (/p123456789)
   /\/item\/[^/?#]+/i,
   /\/dp\/[^/?#]+/i,
 ];
 
-/** Paths that match a product pattern but are never a product page. */
-const EXCLUDED = /\/(cart|checkout|account|login|register|search|compare|wishlist|tag|category|categories|collections?)(\/|$|\?)/i;
+/** Paths that are never a product, whatever else they match. */
+const EXCLUDED =
+  /\/(cart|checkout|account|login|logout|register|search|compare|wishlist|tag|tags|category|categories|collections?|brands?|blog|articles?|news|faq|contact|about|terms|privacy|policy|shipping)(\/|$|\?)/i;
+
+/** Salla and Zid publish their static pages under /p/<slug>. */
+const INFO_PAGE = /\/p\/[^/?#]+/i;
+
+/** File-ish and asset URLs that a sitemap sometimes carries. */
+const NOT_A_PAGE = /\.(xml|jpe?g|png|webp|gif|svg|pdf|css|js|ico)($|\?)/i;
+
+export type UrlRank = "product" | "maybe" | "no";
+
+/**
+ * How likely a URL is to be a product page.
+ *
+ * The "maybe" rank is what makes Salla work. A Salla product lives at an
+ * opaque slug — `https://shop.com/ar/OyvVenN` — with nothing in the path
+ * that says "product". Demanding a recognisable pattern threw away all
+ * 619 product URLs in such a store's sitemap and left the importer
+ * reading the shop's policy pages instead. So anything that is a plain
+ * page and not obviously something else stays a candidate, and the
+ * extractor decides: a page with no product data yields nothing, which
+ * costs one fetch and no wrong data.
+ */
+export function rankProductUrl(url: string): UrlRank {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "no";
+  }
+  const path = parsed.pathname;
+  if (NOT_A_PAGE.test(path)) return "no";
+  if (EXCLUDED.test(path)) return "no";
+  if (PRODUCT_PATH_PATTERNS.some((pattern) => pattern.test(path))) return "product";
+  if (INFO_PAGE.test(path)) return "no";
+
+  // Two segments at most beyond an optional locale: /ar/OyvVenN, /OyvVenN.
+  const segments = path.split("/").filter(Boolean);
+  const withoutLocale = /^[a-z]{2}(-[a-z]{2})?$/i.test(segments[0] ?? "")
+    ? segments.slice(1)
+    : segments;
+  if (withoutLocale.length === 0 || withoutLocale.length > 2) return "no";
+  return "maybe";
+}
 
 export function looksLikeProductUrl(url: string): boolean {
-  let path: string;
-  try {
-    path = new URL(url).pathname;
-  } catch {
-    return false;
+  return rankProductUrl(url) === "product";
+}
+
+/**
+ * Orders candidates so certain product URLs are read before the merely
+ * possible ones, and caps the list.
+ */
+export function rankedProductUrls(urls: string[], limit: number): string[] {
+  const certain: string[] = [];
+  const possible: string[] = [];
+  const seen = new Set<string>();
+
+  for (const url of urls) {
+    const clean = url.split("#")[0];
+    if (seen.has(clean)) continue;
+    seen.add(clean);
+    const rank = rankProductUrl(clean);
+    if (rank === "product") certain.push(clean);
+    else if (rank === "maybe") possible.push(clean);
   }
-  if (EXCLUDED.test(path)) return false;
-  return PRODUCT_PATH_PATTERNS.some((pattern) => pattern.test(path));
+
+  return [...certain, ...possible].slice(0, limit);
 }
 
 /** Candidate sitemap locations, in the order worth trying. */
@@ -73,11 +129,8 @@ export function productLinksFromHtml(html: string, pageUrl: string, limit = 40):
     return [];
   }
 
-  const seen = new Set<string>();
-  const out: string[] = [];
-
+  const candidates: string[] = [];
   for (const match of html.matchAll(/<a[^>]+href=["']([^"'#]+)["']/gi)) {
-    if (out.length >= limit) break;
     let resolved: string;
     try {
       resolved = new URL(match[1], pageUrl).toString();
@@ -85,15 +138,10 @@ export function productLinksFromHtml(html: string, pageUrl: string, limit = 40):
       continue;
     }
     if (!resolved.startsWith(origin)) continue;
-    if (!looksLikeProductUrl(resolved)) continue;
-
-    const clean = resolved.split("#")[0];
-    if (seen.has(clean)) continue;
-    seen.add(clean);
-    out.push(clean);
+    candidates.push(resolved);
   }
 
-  return out;
+  return rankedProductUrls(candidates, limit);
 }
 
 /** Which platform a page is, from its own markup. Used for messaging. */
