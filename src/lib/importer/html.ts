@@ -19,9 +19,12 @@ export async function fetchText(
     response = await safeFetch(url.toString(), {
       headers: {
         Accept: accept,
-        // Not deception — an honest identifier that still reads as a real
-        // client. A bare fetch() UA gets bot-walled by most storefronts.
-        "User-Agent": "Mozilla/5.0 (compatible; JaddidImporter/1.0; +https://j-addid.com)",
+        // Keeps our name and contact URL in the string — but a bare
+        // "compatible" token is what the bot walls in front of Salla and
+        // Zid match on, and a challenge page carries no product data.
+        "User-Agent":
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+          "Chrome/125.0.0.0 Safari/537.36 JaddidImporter/1.0 (+https://j-addid.com)",
         "Accept-Language": "ar,en;q=0.8",
       },
     });
@@ -95,4 +98,33 @@ export function parsePrice(raw: unknown): number | null {
   if (!match) return null;
   const value = Number(match[0]);
   return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/** Resolves a possibly relative href against the page it was found on. */
+export function absolute(href: string | null | undefined, base: string): string | null {
+  if (!href) return null;
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the first matching <meta> tag, accepting either attribute order —
+ * storefront templates write both.
+ */
+export function metaContent(html: string, ...names: string[]): string | null {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match =
+      html.match(
+        new RegExp(`<meta[^>]*(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']*)["']`, "i"),
+      ) ??
+      html.match(
+        new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*(?:property|name)=["']${escaped}["']`, "i"),
+      );
+    if (match) return decodeEntities(match[1]);
+  }
+  return null;
 }
