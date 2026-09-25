@@ -67,6 +67,9 @@ export default function ProfileForm({
           dir="ltr"
           className="w-full cursor-not-allowed rounded-xl border border-[var(--jaddid-border)] bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500"
         />
+        <span className="mt-1 block text-xs text-slate-500">
+          لتغييره استخدم النموذج تحت.
+        </span>
       </label>
 
       <FormField

@@ -28,3 +28,16 @@ export const storeSettingsSchema = z.object({
 });
 
 export type StoreSettingsInput = z.infer<typeof storeSettingsSchema>;
+
+export const changeEmailSchema = z.object({
+  newEmail: z
+    .string()
+    .trim()
+    .min(1, "البريد الإلكتروني مطلوب")
+    .max(255)
+    .refine((val) => /^\S+@\S+\.\S+$/.test(val), {
+      message: "أدخل بريدًا إلكترونيًا صحيحًا",
+    }),
+});
+
+export type ChangeEmailInput = z.infer<typeof changeEmailSchema>;

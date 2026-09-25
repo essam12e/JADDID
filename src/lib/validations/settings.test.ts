@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { profileSchema, storeSettingsSchema } from "./settings";
+import { profileSchema, storeSettingsSchema, changeEmailSchema } from "./settings";
 
 describe("profileSchema", () => {
   it("accepts a valid name", () => {
@@ -46,5 +46,23 @@ describe("storeSettingsSchema", () => {
       storeSettingsSchema.safeParse({ storeName: "متجري", storeUrl: "not-a-url" })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("changeEmailSchema", () => {
+  it("accepts an ordinary address", () => {
+    expect(changeEmailSchema.safeParse({ newEmail: "new@example.com" }).success).toBe(true);
+  });
+
+  it("trims before judging", () => {
+    const parsed = changeEmailSchema.safeParse({ newEmail: "  new@example.com  " });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.newEmail).toBe("new@example.com");
+  });
+
+  it("refuses an empty or malformed address", () => {
+    for (const newEmail of ["", "   ", "nope", "a@b", "@example.com"]) {
+      expect(changeEmailSchema.safeParse({ newEmail }).success, newEmail).toBe(false);
+    }
   });
 });

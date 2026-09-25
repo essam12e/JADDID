@@ -272,6 +272,82 @@ export function resetPasswordEmail(params: {
   });
 }
 
+/**
+ * Sent to the NEW address: the one that has to prove it exists.
+ */
+export function emailChangeConfirmEmail(params: {
+  name?: string | null;
+  newEmail: string;
+  actionLink: string;
+  code?: string | null;
+}): RenderedEmail {
+  const who = params.name?.trim() ? ` يا ${params.name.trim()}` : "";
+  return build("أكّد بريدك الجديد — جَدِّد", {
+    preheader: "أكّد بريدك الإلكتروني الجديد في جَدِّد.",
+    heading: `أكّد بريدك الجديد${who}`,
+    paragraphs: [
+      "وصلنا طلب لتغيير البريد الإلكتروني لحسابك في جَدِّد إلى هذا العنوان.",
+      "اضغط الزر تحت عشان يصير هذا بريدك الرسمي للدخول ولكل الإشعارات.",
+    ],
+    button: { label: "تأكيد البريد الجديد", url: params.actionLink },
+    info: [
+      { label: "البريد الجديد", value: params.newEmail },
+      ...(params.code ? [{ label: "أو استخدم هذا الرمز", value: params.code }] : []),
+    ],
+    outro: [
+      "الرابط صالح لفترة محدودة، وينتهي بمجرد ما تستخدمه.",
+      "إذا ما أنت اللي طلبت التغيير، تجاهل الرسالة — ما راح يتغيّر شي.",
+    ],
+  });
+}
+
+/**
+ * Sent to the CURRENT address.
+ *
+ * Carries a button when Supabase is set to require both addresses to
+ * confirm, and reads as a security notice when it is not — because the
+ * owner of the address being replaced is exactly who needs to hear that
+ * someone asked to replace it.
+ */
+export function emailChangeNoticeEmail(params: {
+  name?: string | null;
+  newEmail: string;
+  actionLink?: string | null;
+  code?: string | null;
+}): RenderedEmail {
+  const who = params.name?.trim() ? ` يا ${params.name.trim()}` : "";
+  const needsAction = !!params.actionLink;
+
+  return build(
+    needsAction ? "وافق على تغيير بريدك — جَدِّد" : "طلب تغيير البريد الإلكتروني — جَدِّد",
+    {
+      preheader: needsAction
+        ? "مطلوب موافقتك من بريدك الحالي."
+        : "أحدهم طلب تغيير بريد حسابك.",
+      heading: `طلب تغيير البريد${who}`,
+      paragraphs: needsAction
+        ? [
+            "وصلنا طلب لتغيير البريد الإلكتروني لحسابك في جَدِّد.",
+            "عشان يكتمل التغيير لازم توافق من بريدك الحالي هذا، ويؤكد صاحب البريد الجديد كذلك.",
+          ]
+        : [
+            "وصلنا طلب لتغيير البريد الإلكتروني لحسابك في جَدِّد.",
+            "أرسلنا رسالة تأكيد للعنوان الجديد. ما راح يتغيّر شي إلا بعد ما يتأكد.",
+          ],
+      button: needsAction
+        ? { label: "أوافق على التغيير", url: params.actionLink as string }
+        : undefined,
+      info: [
+        { label: "البريد الجديد المطلوب", value: params.newEmail },
+        ...(needsAction && params.code ? [{ label: "أو استخدم هذا الرمز", value: params.code }] : []),
+      ],
+      outro: [
+        "إذا ما أنت اللي طلبت هذا التغيير، غيّر كلمة مرورك فورًا وتواصل معنا — قد يكون أحد وصل لحسابك.",
+      ],
+    },
+  );
+}
+
 export const TEMPLATES = {
   welcome: welcomeEmail,
   activation_submitted: activationSubmittedEmail,
@@ -281,6 +357,8 @@ export const TEMPLATES = {
   password_changed: passwordChangedEmail,
   confirm_signup: confirmSignupEmail,
   reset_password: resetPasswordEmail,
+  email_change_confirm: emailChangeConfirmEmail,
+  email_change_notice: emailChangeNoticeEmail,
 } as const;
 
 export type TemplateName = keyof typeof TEMPLATES;
