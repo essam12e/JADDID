@@ -23,7 +23,7 @@ export default async function AdminActivationsPage() {
     supabase
       .from("activation_requests")
       .select(
-        "id, status, note, created_at, reviewed_at, organizations(name, account_number), account_subscriptions(plan_id, plans(name, price, currency))",
+        "id, status, kind, requested_plan_id, note, created_at, reviewed_at, organizations(name, account_number), account_subscriptions(plan_id, plans(name, price, currency))",
       )
       .order("created_at", { ascending: false })
       .limit(50),
@@ -36,6 +36,7 @@ export default async function AdminActivationsPage() {
 
   const plans = planRows ?? [];
 
+  const planById = new Map(plans.map((p) => [p.id, p]));
   const pending = (requests ?? []).filter((r) => r.status === "pending");
   const resolved = (requests ?? []).filter((r) => r.status !== "pending");
 
@@ -60,15 +61,31 @@ export default async function AdminActivationsPage() {
             const plan = (Array.isArray(planRaw) ? planRaw[0] : planRaw) as
               | { name: string; price: number; currency: string }
               | undefined;
+            const isUpgrade = r.kind === "plan_change";
+            const requested = r.requested_plan_id ? planById.get(r.requested_plan_id) : undefined;
             return (
               <div key={r.id} className="rounded-2xl border border-[var(--jaddid-border)] bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-bold text-[var(--jaddid-navy)]">{org?.name ?? "—"}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-bold text-[var(--jaddid-navy)]">{org?.name ?? "—"}</p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          isUpgrade ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {isUpgrade ? "تغيير باقة" : "تفعيل جديد"}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-400">
                       رقم الحساب: {org?.account_number ?? "—"}
-                      {plan ? ` · الباقة: ${plan.name} (${plan.price} ${plan.currency})` : ""}
+                      {plan ? ` · الباقة الحالية: ${plan.name} (${plan.price} ${plan.currency})` : ""}
                     </p>
+                    {requested ? (
+                      <p className="mt-0.5 text-xs font-semibold text-violet-700">
+                        طلب الترقية إلى: {requested.name} ({requested.price} {requested.currency})
+                      </p>
+                    ) : null}
                     <p className="mt-0.5 text-xs text-slate-400" dir="ltr">
                       {new Date(r.created_at).toLocaleString("ar-SA")}
                     </p>
@@ -81,7 +98,8 @@ export default async function AdminActivationsPage() {
                   <ReviewActions
                     requestId={r.id}
                     plans={plans}
-                    currentPlanId={sub?.plan_id ?? null}
+                    currentPlanId={r.requested_plan_id ?? sub?.plan_id ?? null}
+                    isUpgrade={isUpgrade}
                   />
                 </div>
               </div>
